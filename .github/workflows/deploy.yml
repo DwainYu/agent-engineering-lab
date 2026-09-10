@@ -30,6 +30,10 @@ jobs:
       - name: Build
         run: npm run build
       - uses: actions/configure-pages@v5
+        with:
+          # First run on a fresh repository flips the Pages setting itself, so
+          # deploying does not require manual repository configuration.
+          enablement: true
       - uses: actions/upload-artifact@v4
         with:
           name: github-pages
