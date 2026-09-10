@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Every check the repository promises, in one place.
+      - name: Validate markdown content
+        run: npm run validate
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck (app, scripts and tests)
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Generated data is committed and fresh
+        run: |
+          npm run generate
+          git diff --exit-code data web/src/data/generated
