@@ -22,6 +22,15 @@ tft-agent-set17            ship      production Agent, portfolio project
 Keeping those separate is the point: Set 17 never becomes a place to
 "learn in public", and Set 18 never has to be feature-complete.
 
+| Repository                                                                  | Role                   | Live                                                                                        |
+| --------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------- |
+| [`agent-engineering-lab`](https://github.com/DwainYu/agent-engineering-lab) | records and the site   | [dwainyu.github.io/agent-engineering-lab](https://dwainyu.github.io/agent-engineering-lab/) |
+| [`tft-agent-set18`](https://github.com/DwainYu/tft-agent-set18)             | runnable training code | stdlib-only runtime, 5 experiments, 28 tests                                                |
+| [`tft-agent-set17`](https://github.com/DwainYu/tft-agent-set17)             | production agent       | portfolio project, not a sandbox                                                            |
+
+Every notebook under `experiments/` links to the file in Set 18 that proves
+the claim, and every concept page links to both projects.
+
 ## Why
 
 I don't want to simply "use" Agent frameworks. I want to understand:
