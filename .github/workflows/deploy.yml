@@ -34,9 +34,10 @@ jobs:
           # First run on a fresh repository flips the Pages setting itself, so
           # deploying does not require manual repository configuration.
           enablement: true
-      - uses: actions/upload-artifact@v4
+      # upload-pages-artifact (not upload-artifact): it packs the site in the
+      # format actions/deploy-pages and the Pages API actually accept.
+      - uses: actions/upload-pages-artifact@v4
         with:
-          name: github-pages
           path: ./dist
           if-no-files-found: error
 
