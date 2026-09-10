@@ -15,7 +15,7 @@ concepts:
 
 training_project:
   repo: tft-agent-set18
-  path: app/agent/state.py
+  path: agent/context.py
 
 difficulty: medium
 estimated_time: 3h

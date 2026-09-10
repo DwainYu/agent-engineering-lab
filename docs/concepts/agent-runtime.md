@@ -16,7 +16,7 @@ experiments: []
 
 training_project:
   repo: tft-agent-set18
-  path: app/agent/
+  path: agent/
 ---
 
 # Agent Runtime

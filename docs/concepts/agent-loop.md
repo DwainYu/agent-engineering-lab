@@ -3,7 +3,7 @@ id: agent-loop
 title: Agent Loop
 category: runtime
 status: learning
-progress: 40
+progress: 60
 summary: The repeated cycle of model turn, tool execution and result injection, ending when the model answers or a budget stops it.
 
 prerequisites:
@@ -19,7 +19,7 @@ experiments:
 
 training_project:
   repo: tft-agent-set18
-  path: app/agent/loop.py
+  path: agent/loop.py
 ---
 
 # Agent Loop

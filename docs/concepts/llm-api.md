@@ -16,7 +16,7 @@ experiments:
 
 training_project:
   repo: tft-agent-set18
-  path: app/llm/
+  path: agent/provider.py
 ---
 
 # LLM API

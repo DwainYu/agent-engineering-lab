@@ -45,21 +45,25 @@ usage                     → prompt / completion / total tokens
 ## Result
 
 ```text
-$ DEEPSEEK_API_KEY=*** python3 src/main.py
-finish_reason : stop
-prompt_tokens : 21
-completion    : 148
-answer        : An Agent is a program that …
+$ python3 experiments/e01_single_turn.py
+provider      : scripted
+tools offered : 4 (calculator, now, note_get, note_put)
+messages      : 2
+response      : role=assistant tool_calls=0 finish_reason=stop
+usage         : Usage(prompt_tokens=0, completion_tokens=12)
 ```
+
+Against the real endpoint the same script takes `--real`, and `usage` stops
+being a made-up number. I have not run that yet — no key in this environment —
+so token accounting is the first thing to verify tomorrow.
 
 ## Code
 
 Lives in the training project, not here:
 
-- `tft-agent-set18/app/llm/deepseek.py` — the real client
-- `tft-agent-set18/app/llm/mock.py` — scripted provider, so this experiment
-  also runs with no key
-- `tft-agent-set18/experiments/001_basic_llm.py`
+- `tft-agent-set18/agent/provider.py` — `ScriptedProvider` (deterministic) and
+  `OpenAICompatProvider` (stdlib HTTP, 429/5xx backoff, usage accounting)
+- `tft-agent-set18/experiments/e01_single_turn.py` — this run
 
 ## Next Step
 

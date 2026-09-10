@@ -19,13 +19,16 @@ concepts:
 experiment:
   - 001-basic-llm
   - 002-tool-calling
+  - 003-agent-loop
+  - 004-failure-modes
+  - 005-context-trim
 
 source:
   - https://www.anthropic.com/engineering/building-effective-agents
 
 training_project:
   repo: tft-agent-set18
-  path: app/agent/loop.py
+  path: agent/loop.py
 
 production_project:
   repo: tft-agent-set17
@@ -87,21 +90,23 @@ ahead of time.
 ## Source Code Analysis
 
 `experiments/002-tool-calling/` is the smallest observable version of the
-loop. One turn, no `while`. Output:
+loop. One turn, no `while`. Output from the scripted provider:
 
 ```text
-user      → "上海现在几度？适合穿外套吗？"
-assistant → tool_call get_weather({"city": "上海"})   (content: None)
-tool      → {"city": "上海", "temperature_c": 24, ...}
-assistant → "上海 24°C，多云，穿件薄外套就够了。"
+ 1. system     'You are an agent that finishes tasks step by step…'
+ 2. user       'What is (17 + 28) * 4? Use the calculator tool…'
+ 3. assistant  tool_calls=calculator({'expression': '(17 + 28) * 4'})   content=''
+ 4. tool       '180'
+ 5. assistant '(17 + 28) * 4 = 180.'
 ```
 
-Two details that only become visible when you print the raw response:
+Two details about the API contract that only matter when you write the client
+yourself:
 
 - A tool call is a **finish reason**, not a message type. `finish_reason:
 "tool_calls"` is how the runtime knows to continue instead of stopping.
-- `content` is `None` on a tool-call turn. A runtime that assumes text and
-  branches on "empty answer" will silently end the loop early.
+- Text is empty on a tool-call turn. A runtime that assumes text and branches
+  on "empty answer" ends the loop before the tool ever runs.
 
 ## What I Didn't Understand
 
@@ -110,6 +115,10 @@ Two details that only become visible when you print the raw response:
   next) that are not conversation. Day 03 should answer this.
 - How to stop a loop that keeps calling tools. I currently only have
   `max_turns`, which is a clamp, not a solution.
+  _(Answered later the same day by Experiment 004: clamp the shape of the
+  request, not just the number of turns — a repeat guard on
+  `(tool, arguments)` refuses the third identical call and hands the model an
+  observation it can act on.)_
 
 ## Questions Asked to DeepSeek
 
@@ -130,12 +139,29 @@ they are the compensating controls, not decoration.
 
 ## Experiment
 
-See:
+The plan was two notebooks. What actually happened is that the plan needed a
+runtime to run against, so `tft-agent-set18` got written today as well: five
+modules (`messages`, `provider`, `tools`, `loop`, `context`, `trace`), five
+experiments, 28 unittest cases, standard library only.
 
-- `experiments/001-basic-llm/`
-- `experiments/002-tool-calling/`
+- `experiments/001-basic-llm/` — one model turn, no tools
+- `experiments/002-tool-calling/` — one tool round trip
+- `experiments/003-agent-loop/` — four turns carrying state through tools
+- `experiments/004-failure-modes/` — six ways a run ends badly
+- `experiments/005-context-trim/` — what the model receives when history grows
 
-Code lives in the training project: `tft-agent-set18/app/`.
+Code: `tft-agent-set18/agent/` and `tft-agent-set18/experiments/`.
+
+Two answers I came in without and left with:
+
+- **Stopping a stuck loop** is not `max_turns`. It is a repeat guard on
+  `(tool, arguments)` — the third identical call is refused with an
+  observation, which gives the model a chance to change approach _inside_ the
+  budget.
+- **Context is the real budget.** The four-turn run ended with nine messages,
+  each turn re-sending all of them; at a 900-token cap the runtime dropped 40
+  history messages down to 18 and still answered correctly, because the fact it
+  needed lived in a tool, not in the prompt.
 
 ## My Own Explanation
 
@@ -163,6 +189,10 @@ machinery — previously it was one undifferentiated block to me.
 - The loop condition is the real product decision.
 - A tool call is text plus a finish reason; execution is always mine.
 - Simplicity is the goal: if the steps are known, do not build an Agent.
+- Every failure mode has to return as text; an exception loses the run, an
+  observation keeps it recoverable.
+- Durable state belongs in tools, because trimming will delete it from the
+  prompt eventually.
 
 ## Verification
 
@@ -172,8 +202,13 @@ I can now explain:
 - [x] Why tools create a loop
 - [x] How tool results return to the model
 - [x] When the loop terminates
+- [x] How a stuck loop is refused (repeat guard, Experiment 004)
+- [x] What trimming costs, and what survives it (Experiment 005)
 - [ ] Why State is separate from Message (Day 03)
 
 ## Next
 
-Day 02 — LLM API: streaming, usage and the failure modes of the client.
+Day 02 — LLM API: streaming, usage and the failure modes of the client. First
+action there: run `e01..e05 --real` against DeepSeek with a key, so token
+accounting stops being a scripted number and retry/backoff gets tested against
+a real 429.

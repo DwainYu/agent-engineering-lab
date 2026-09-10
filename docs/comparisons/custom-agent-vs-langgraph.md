@@ -10,6 +10,14 @@ concepts:
   - agent-loop
   - tool-calling
   - agent-runtime
+
+training_project:
+  repo: tft-agent-set18
+  path: agent/loop.py
+
+production_project:
+  repo: tft-agent-set17
+  path: api/agent/graph.py
 ---
 
 # Hand-Written Agent Loop vs LangGraph
@@ -25,15 +33,17 @@ LangGraph has the shape it has?
 
 ## What a loop costs without a framework
 
-Confirmed so far: a correct loop is tiny (transcript, tool schemas, executor,
-exit test, budget). The complexity is not in the loop. It appears the moment
-the loop has to survive:
+Measured on Day 01 in `tft-agent-set18`: the loop itself is 203 lines, the whole
+runtime 683, and it needs no third-party package. A correct loop is tiny —
+transcript, tool schemas, executor, exit test, budget. The complexity is not in
+the loop. It appears the moment the loop has to survive:
 
 - [ ] process restart, with the transcript still intact — checkpoints
 - [ ] a human approving a tool call mid-run — interrupts
 - [ ] parallel branches writing to the same state — reducers
 - [ ] streaming tokens and tool events to one client — event protocol
-- [ ] replaying one bad turn for debugging — tracing
+- [~] recording what happened — `trace.py` writes one JSON line per event, so a
+  bad run can be read back; replaying it cannot be done yet
 - [ ] routing that is not a linear chain — graph edges
 
 ## Prediction
@@ -45,6 +55,13 @@ the right call for the production project.
 
 What I expect to keep hand-written forever: the loop itself and the tool
 contract. They are small, and understanding them is the point.
+
+## Evidence
+
+- `experiments/003-agent-loop/` — four turns, three tools, nine messages: the loop
+- `experiments/004-failure-modes/` — six stop reasons: the guards
+- `experiments/005-context-trim/` — 40 history messages dropped to 18: the policy
+- `tft-agent-set18/docs/architecture.md` — the same table from the code side
 
 ## Conclusion
 

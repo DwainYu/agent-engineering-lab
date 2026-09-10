@@ -19,7 +19,7 @@ experiment:
 
 training_project:
   repo: tft-agent-set18
-  path: app/llm/
+  path: agent/provider.py
 
 difficulty: easy
 estimated_time: 2h

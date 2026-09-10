@@ -18,7 +18,7 @@ experiments:
 
 training_project:
   repo: tft-agent-set18
-  path: app/agent/loop.py
+  path: agent/loop.py
 
 production_project:
   repo: tft-agent-set17

@@ -15,9 +15,9 @@
     "conceptsCompleted": 0,
     "conceptsLearning": 4,
     "conceptsTotal": 5,
-    "experimentsCompleted": 2,
+    "experimentsCompleted": 5,
     "experimentsLearning": 0,
-    "experimentsTotal": 3,
+    "experimentsTotal": 5,
     "comparisonsTotal": 1,
     "questionsAsked": 3,
     "questionsResolved": 1,
@@ -30,7 +30,7 @@
         "url": "https://github.com/DwainYu/tft-agent-set18",
         "days": 3,
         "concepts": 5,
-        "experiments": 3
+        "experiments": 5
       },
       {
         "id": "tft-agent-set17",
@@ -45,18 +45,18 @@
   },
   "skills": [
     {
+      "id": "agent-loop",
+      "name": "Agent Loop",
+      "category": "runtime",
+      "status": "learning",
+      "progress": 60
+    },
+    {
       "id": "agent",
       "name": "Agent",
       "category": "fundamentals",
       "status": "learning",
       "progress": 45
-    },
-    {
-      "id": "agent-loop",
-      "name": "Agent Loop",
-      "category": "runtime",
-      "status": "learning",
-      "progress": 40
     },
     {
       "id": "tool-calling",
@@ -88,7 +88,7 @@
       "progress": 50,
       "total": 2,
       "completed": 1,
-      "experiments": 2,
+      "experiments": 5,
       "concepts": 4
     },
     {
@@ -98,7 +98,7 @@
       "progress": 0,
       "total": 1,
       "completed": 0,
-      "experiments": 1,
+      "experiments": 0,
       "concepts": 2
     },
     {

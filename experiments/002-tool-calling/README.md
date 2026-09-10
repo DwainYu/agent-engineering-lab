@@ -26,11 +26,11 @@ answer — in exactly one round trip, with no loop.
 ```text
 User
   ↓
-LLM (tools=[get_weather])
+LLM (tools=[calculator, now, note_put, note_get])
   ↓
-tool_call  {"city": "上海"}
+tool_call  calculator {"expression": "(17 + 28) * 4"}
   ↓
-Tool (python function)
+Tool (validated args → python function)
   ↓
 tool result (role=tool, tool_call_id=...)
   ↓
@@ -52,17 +52,27 @@ Answer
 ## Result
 
 ```text
-$ python3 src/main.py --mock
-[turn 1] finish=tool_calls  → get_weather({"city": "上海"})
-[tool  ] {"city": "上海", "temperature_c": 24, "condition": "多云"}
-[turn 2] finish=stop        → 上海 24°C，多云，穿件薄外套就够了。
+$ python3 experiments/e02_tool_calling.py
+answer        : (17 + 28) * 4 = 180.
+stop reason   : final-answer
+observations  : 1
+
+ 1. system     'You are an agent that finishes tasks step by step…'
+ 2. user       'What is (17 + 28) * 4? Use the calculator tool…'
+ 3. assistant  tool_calls=calculator({'expression': '(17 + 28) * 4'})
+ 4. tool       '180'
+ 5. assistant '(17 + 28) * 4 = 180.'
 ```
+
+The `calculator` tool is an AST walk, not `eval()` — the model's argument
+string is untrusted input, so parsing it is also a safety boundary.
 
 ## Code
 
-- `tft-agent-set18/app/tools/weather.py`, `tft-agent-set18/app/tools/calculator.py`
-- `tft-agent-set18/app/agent/tools.py` — the registry and dispatcher
-- `tft-agent-set18/experiments/002_tool_calling.py`
+- `tft-agent-set18/agent/tools.py` — registry, required/unexpected argument
+  validation, `calculator`
+- `tft-agent-set18/agent/loop.py` — one round trip inside the loop
+- `tft-agent-set18/experiments/e02_tool_calling.py` — this run
 
 ## Next Step
 

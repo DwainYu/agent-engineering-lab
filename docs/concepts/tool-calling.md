@@ -18,7 +18,7 @@ experiments:
 
 training_project:
   repo: tft-agent-set18
-  path: app/tools/registry.py
+  path: agent/tools.py
 
 production_project:
   repo: tft-agent-set17
