@@ -1,0 +1,210 @@
+{
+  "meta": {
+    "project": "Agent Engineering Lab",
+    "version": "0.1.0",
+    "totalDays": 30,
+    "updatedAt": "2026-09-10"
+  },
+  "summary": {
+    "totalDays": 30,
+    "completedDays": 1,
+    "learningDays": 1,
+    "plannedDays": 1,
+    "currentDay": 1,
+    "completionRate": 3,
+    "conceptsCompleted": 0,
+    "conceptsLearning": 4,
+    "conceptsTotal": 5,
+    "experimentsCompleted": 2,
+    "experimentsLearning": 0,
+    "experimentsTotal": 3,
+    "comparisonsTotal": 1,
+    "questionsAsked": 3,
+    "questionsResolved": 1,
+    "questionsOpen": 2,
+    "projects": [
+      {
+        "id": "tft-agent-set18",
+        "name": "TFT Agent Set 18",
+        "role": "training",
+        "url": "https://github.com/DwainYu/tft-agent-set18",
+        "days": 3,
+        "concepts": 5,
+        "experiments": 3
+      },
+      {
+        "id": "tft-agent-set17",
+        "name": "TFT Agent Set 17",
+        "role": "production",
+        "url": "https://github.com/DwainYu/tft-agent-set17",
+        "days": 1,
+        "concepts": 2,
+        "experiments": 0
+      }
+    ]
+  },
+  "skills": [
+    {
+      "id": "agent",
+      "name": "Agent",
+      "category": "fundamentals",
+      "status": "learning",
+      "progress": 45
+    },
+    {
+      "id": "agent-loop",
+      "name": "Agent Loop",
+      "category": "runtime",
+      "status": "learning",
+      "progress": 40
+    },
+    {
+      "id": "tool-calling",
+      "name": "Tool Calling",
+      "category": "tools",
+      "status": "learning",
+      "progress": 35
+    },
+    {
+      "id": "llm-api",
+      "name": "LLM API",
+      "category": "fundamentals",
+      "status": "learning",
+      "progress": 30
+    },
+    {
+      "id": "agent-runtime",
+      "name": "Agent Runtime",
+      "category": "runtime",
+      "status": "planned",
+      "progress": 0
+    }
+  ],
+  "phases": [
+    {
+      "id": "fundamentals",
+      "name": "Agent Fundamentals",
+      "status": "learning",
+      "progress": 50,
+      "total": 2,
+      "completed": 1,
+      "experiments": 2,
+      "concepts": 4
+    },
+    {
+      "id": "runtime",
+      "name": "Agent Runtime",
+      "status": "planned",
+      "progress": 0,
+      "total": 1,
+      "completed": 0,
+      "experiments": 1,
+      "concepts": 2
+    },
+    {
+      "id": "context",
+      "name": "Context",
+      "status": "planned",
+      "progress": 0,
+      "total": 0,
+      "completed": 0,
+      "experiments": 0,
+      "concepts": 0
+    },
+    {
+      "id": "memory",
+      "name": "Memory",
+      "status": "planned",
+      "progress": 0,
+      "total": 0,
+      "completed": 0,
+      "experiments": 0,
+      "concepts": 0
+    },
+    {
+      "id": "rag",
+      "name": "RAG",
+      "status": "planned",
+      "progress": 0,
+      "total": 0,
+      "completed": 0,
+      "experiments": 0,
+      "concepts": 0
+    },
+    {
+      "id": "evaluation",
+      "name": "Evaluation",
+      "status": "planned",
+      "progress": 0,
+      "total": 0,
+      "completed": 0,
+      "experiments": 0,
+      "concepts": 0
+    },
+    {
+      "id": "production",
+      "name": "Production",
+      "status": "planned",
+      "progress": 0,
+      "total": 0,
+      "completed": 0,
+      "experiments": 0,
+      "concepts": 0
+    }
+  ],
+  "days": [
+    {
+      "day": 1,
+      "title": "What An Agent Actually Is",
+      "status": "completed",
+      "phase": "fundamentals",
+      "date": "2026-09-10",
+      "path": "docs/daily/day-01.md"
+    },
+    {
+      "day": 2,
+      "title": "LLM API, Streaming And Usage",
+      "status": "learning",
+      "phase": "fundamentals",
+      "date": "2026-09-11",
+      "path": "docs/daily/day-02.md"
+    },
+    {
+      "day": 3,
+      "title": "Agent State And Termination",
+      "status": "planned",
+      "phase": "runtime",
+      "date": "2026-09-12",
+      "path": "docs/daily/day-03.md"
+    }
+  ],
+  "questions": {
+    "asked": 3,
+    "resolved": 1,
+    "open": 2,
+    "items": [
+      {
+        "slug": "Q001",
+        "status": "learning",
+        "question": "Why does an Agent need a State object when the message transcript already contains everything the model can see?",
+        "concept": "agent-runtime",
+        "path": "docs/questions/open.md"
+      },
+      {
+        "slug": "Q002",
+        "status": "learning",
+        "question": "When a streamed tool call's `arguments` arrive in fragments across SSE chunks, who reassembles them, and what happens if a chunk is lost?",
+        "concept": "llm-api",
+        "path": "docs/questions/open.md"
+      },
+      {
+        "slug": "Q001",
+        "status": "completed",
+        "question": "Why does a Workflow not need a loop, while an Agent always does?",
+        "explanation": "A Workflow's step count is known when I write the code, so control flow can live in my `for` / `if`. An Agent's step count depends on what the intermediate results say, so the branch has to move into the model's output — and something outside the model has to keep going until the model stops asking. What changed: I stopped trying to \"make the model decide\" through prompt wording and started treating the exit test as runtime code that I own.",
+        "concept": "agent",
+        "path": "docs/questions/resolved.md"
+      }
+    ]
+  }
+}

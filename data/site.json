@@ -1,0 +1,36 @@
+{
+  "name": "Agent Engineering Lab",
+  "tagline": "Learn → Reproduce → Experiment → Build",
+  "description": "A hands-on learning laboratory for understanding and building LLM Agents: daily notes, concepts, experiments and a progress record generated from this repository itself.",
+  "repo": "DwainYu/agent-engineering-lab",
+  "totalDays": 30,
+  "focus": {
+    "concept": "Agent Runtime",
+    "description": "Build the smallest Agent that actually runs — LLM client, tool calling, state and a loop that knows when to stop — before adopting any framework."
+  },
+  "projects": [
+    {
+      "id": "tft-agent-set18",
+      "name": "TFT Agent Set 18",
+      "role": "training",
+      "tagline": "Agent Engineering Training Ground",
+      "description": "A training-oriented rewrite of the TFT Agent. The goal is not feature completeness, but understanding Agent engineering through minimal implementations: a hand-written loop, state, tools and context before any framework.",
+      "url": "https://github.com/DwainYu/tft-agent-set18"
+    },
+    {
+      "id": "tft-agent-set17",
+      "name": "TFT Agent Set 17",
+      "role": "production",
+      "tagline": "Production-oriented Agent Project",
+      "description": "The product: LangGraph runtime, RAG, streaming, evaluation and deployment. Only ideas proven in Set 18 land here.",
+      "url": "https://github.com/DwainYu/tft-agent-set17"
+    }
+  ],
+  "philosophy": [
+    "Why something exists",
+    "How it works",
+    "When to use it",
+    "How to implement a minimal version",
+    "What can go wrong in production"
+  ]
+}
