@@ -1,0 +1,222 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-mono:
+    ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+}
+
+:root {
+  --bg: #ffffff;
+  --surface: #f6f7f8;
+  --elevate: #eceef0;
+  --line: #e2e5e8;
+  --text: #16181c;
+  --dim: #5b636d;
+  --faint: #8b939d;
+  --accent: #0f7b6c;
+  --ok: #15803d;
+  --warn: #b45309;
+  --todo: #94a3b8;
+}
+
+.dark {
+  --bg: #0a0a0b;
+  --surface: #101113;
+  --elevate: #16181b;
+  --line: #232629;
+  --text: #e8eaed;
+  --dim: #969ba3;
+  --faint: #6b7178;
+  --accent: #34d399;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --todo: #64748b;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+/* ---------------------------------------------------------- code highlight */
+/* highlight.js github-ish pair, tuned for the dark-first palette above.      */
+
+.hljs {
+  color: var(--text);
+  background: transparent;
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--faint);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-type {
+  color: #cf7a4f;
+}
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-literal,
+.dark .hljs-type {
+  color: #ff9e64;
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: #0a7d55;
+}
+.dark .hljs-string,
+.dark .hljs-regexp,
+.dark .hljs-addition {
+  color: #9ece6a;
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  color: #b1576b;
+}
+.dark .hljs-number,
+.dark .hljs-symbol,
+.dark .hljs-bullet {
+  color: #f7768e;
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-section {
+  color: #3f6bd6;
+}
+.dark .hljs-title,
+.dark .hljs-title.function_,
+.dark .hljs-section {
+  color: #7aa2f7;
+}
+.hljs-title.class_,
+.hljs-attr,
+.hljs-variable,
+.hljs-template-variable {
+  color: #9a6a1f;
+}
+.dark .hljs-title.class_,
+.dark .hljs-attr,
+.dark .hljs-variable,
+.dark .hljs-template-variable {
+  color: #e0af68;
+}
+.hljs-built_in,
+.hljs-builtin-name {
+  color: #0f7b8a;
+}
+.dark .hljs-built_in,
+.dark .hljs-builtin-name {
+  color: #2ac3de;
+}
+.hljs-meta {
+  color: var(--faint);
+}
+.hljs-deletion {
+  color: #d1435f;
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------ markdown box */
+
+.markdown {
+  @apply prose prose-sm max-w-[850px] break-words dark:prose-invert sm:prose-base;
+  --tw-prose-body: var(--text);
+  --tw-prose-headings: var(--text);
+  --tw-prose-lead: var(--dim);
+  --tw-prose-links: var(--accent);
+  --tw-prose-bold: var(--text);
+  --tw-prose-counters: var(--dim);
+  --tw-prose-bullets: var(--faint);
+  --tw-prose-hr: var(--line);
+  --tw-prose-quotes: var(--dim);
+  --tw-prose-quote-borders: var(--line);
+  --tw-prose-captions: var(--faint);
+  --tw-prose-code: var(--text);
+  --tw-prose-pre-code: var(--text);
+  --tw-prose-pre-bg: var(--surface);
+  --tw-prose-th-borders: var(--line);
+  --tw-prose-td-borders: var(--line);
+}
+
+.markdown :where(h1) {
+  @apply mt-0 text-2xl font-semibold tracking-tight sm:text-3xl;
+}
+.markdown :where(h2) {
+  @apply mt-10 border-b border-[var(--line)] pb-2 text-lg font-semibold tracking-tight sm:text-xl;
+}
+.markdown :where(h3) {
+  @apply mt-8 text-base font-semibold sm:text-lg;
+}
+.markdown :where(p) {
+  @apply leading-7;
+}
+.markdown :where(a) {
+  @apply font-medium text-[var(--accent)] no-underline decoration-[var(--accent)]/30 underline-offset-2 hover:decoration-[var(--accent)];
+}
+.markdown :where(code) {
+  @apply rounded border border-[var(--line)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[0.85em];
+}
+.markdown :where(pre code) {
+  @apply rounded-none border-0 bg-transparent p-0 text-[0.82rem] leading-6 sm:text-[0.875rem];
+}
+.markdown :where(pre) {
+  @apply overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 text-[var(--text)];
+}
+.markdown :where(blockquote) {
+  @apply border-l-2 border-[var(--accent)]/40 pl-4 italic;
+}
+.markdown :where(table) {
+  @apply w-full text-sm;
+}
+.markdown :where(th, td) {
+  @apply px-3 py-2;
+}
+.markdown :where(ul:has(li > input[type="checkbox"])) {
+  @apply list-none pl-0;
+}
+.markdown :where(li:has(> input[type="checkbox"])) {
+  @apply flex items-start gap-2;
+}
+.markdown :where(li > input[type="checkbox"]) {
+  @apply mt-1.5 size-3.5 accent-[var(--accent)];
+}
+
+/* -------------------------------------------------------------- scrollbars */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}

@@ -1,0 +1,146 @@
+[
+  {
+    "kind": "concept",
+    "slug": "agent",
+    "path": "docs/concepts/agent.md",
+    "id": "agent",
+    "title": "Agent",
+    "category": "fundamentals",
+    "status": "learning",
+    "progress": 45,
+    "summary": "A program where the model chooses the next step at runtime, inside a loop that a runtime executes.",
+    "source": "https://www.anthropic.com/engineering/building-effective-agents",
+    "prerequisites": [],
+    "related": [
+      "agent-loop",
+      "tool-calling"
+    ],
+    "experiments": [
+      "001-basic-llm",
+      "002-tool-calling"
+    ],
+    "days": [],
+    "tags": [],
+    "trainingProject": {
+      "repo": "tft-agent-set18",
+      "path": "app/agent/loop.py"
+    },
+    "productionProject": {
+      "repo": "tft-agent-set17",
+      "path": "api/agent/graph.py"
+    },
+    "body": "# Agent\n\n## Definition\n\nAn **Agent** is a program in which an LLM decides, at runtime, which step\ncomes next, and a surrounding runtime executes that decision and feeds the\nresult back. Contrast with a **Workflow**, where the sequence of steps is\nfixed in code.\n\n## Why\n\nSome tasks cannot be decomposed ahead of time: the number of steps, and\nwhich step follows, depend on what the previous result said. Writing that\nbranching in `if` statements does not scale, so the branch is moved into the\nmodel's output and the runtime becomes a loop.\n\nThe cost of that trade is control. Every production Agent concern —\nevaluation, budgets, tracing, guardrails — exists to buy control back.\n\n## Minimal Implementation\n\n```python\ndef agent(goal: str, tools: list[Tool], max_turns: int = 8) -> str:\n    messages = [{\"role\": \"user\", \"content\": goal}]\n    for _ in range(max_turns):\n        reply = llm.complete(messages, tools=tools)\n        if not reply.tool_calls:\n            return reply.content or \"\"\n        messages.append(reply.to_message())\n        messages.extend(tools.run(reply.tool_calls))\n    raise Budget(\"max_turns\")\n```\n\nFive parts, and only five: transcript, tool schemas, executor, loop\ncondition, budget.\n\n## Real Project\n\n- Training: `tft-agent-set18/app/agent/loop.py` — this minimal loop.\n- Production: `tft-agent-set17/api/agent/graph.py` — the same loop expressed\n  as a LangGraph state graph, with routing, checkpoints and streaming.\n\n## Common Problems\n\n- No termination condition other than \"the model stopped answering\".\n- Tool results never written back into the transcript, so the model repeats\n  the same call.\n- Too many tools: selection accuracy drops before capability rises.\n- Treating the Agent as a hammer, so simple two-step tasks get a loop."
+  },
+  {
+    "kind": "concept",
+    "slug": "agent-loop",
+    "path": "docs/concepts/agent-loop.md",
+    "id": "agent-loop",
+    "title": "Agent Loop",
+    "category": "runtime",
+    "status": "learning",
+    "progress": 40,
+    "summary": "The repeated cycle of model turn, tool execution and result injection, ending when the model answers or a budget stops it.",
+    "prerequisites": [
+      "agent",
+      "tool-calling",
+      "llm-api"
+    ],
+    "related": [
+      "agent-runtime"
+    ],
+    "experiments": [
+      "002-tool-calling"
+    ],
+    "days": [],
+    "tags": [],
+    "trainingProject": {
+      "repo": "tft-agent-set18",
+      "path": "app/agent/loop.py"
+    },
+    "body": "# Agent Loop\n\n## Definition\n\nThe Agent Loop is the cycle:\n\n```text\ntranscript → model → (tool_calls?) → execute → results → transcript → ...\n```\n\nwith two exits: the model produced a final answer, or the runtime refused to\ncontinue (turn / token / time / cost budget).\n\n## Why\n\nThe model is stateless and single-shot. Any multi-step behaviour therefore\nhas to come from the caller re-invoking it with a longer transcript. The loop\nis what turns one stateless function into an apparently persistent worker.\n\n## Minimal Implementation\n\nThe loop is five lines, but the interesting part is the exit test. The model\nsignals \"I am done\" by **not** asking for a tool. That is a weak signal: it\ncan also mean \"I am confused\". A robust runtime adds:\n\n- a hard `max_turns`\n- a repeated-call detector (same tool, same args)\n- a token budget for the transcript itself\n\n```python\nseen: Counter[tuple[str, str]] = Counter()\nfor _ in range(max_turns):\n    reply = llm.complete(messages, tools=tools)\n    if not reply.tool_calls:\n        return reply.content\n    key = (reply.tool_calls[0].name, reply.tool_calls[0].arguments)\n    if (seen[key] := seen[key] + 1) >= 3:\n        raise Stuck(key)\n    ...\n```\n\n## Real Project\n\n- Training: `tft-agent-set18/app/agent/loop.py`\n- Production: `tft-agent-set17/api/agent/graph.py` — the loop becomes a\n  conditional edge between nodes.\n\n## Common Problems\n\n- Ending on empty content and never telling the user why.\n- Injecting tool results as `user` messages, which teaches the model to\n  imitate tool output.\n- No observability, so a stuck loop looks identical to a working one."
+  },
+  {
+    "kind": "concept",
+    "slug": "agent-runtime",
+    "path": "docs/concepts/agent-runtime.md",
+    "id": "agent-runtime",
+    "title": "Agent Runtime",
+    "category": "runtime",
+    "status": "planned",
+    "progress": 0,
+    "summary": "Everything that is not the model: state, message history, event stream, budgets, and the scheduling of tool execution.",
+    "prerequisites": [
+      "agent-loop"
+    ],
+    "related": [
+      "agent-loop"
+    ],
+    "experiments": [],
+    "days": [],
+    "tags": [],
+    "trainingProject": {
+      "repo": "tft-agent-set18",
+      "path": "app/agent/"
+    },
+    "body": "# Agent Runtime\n\n## Definition\n\nThe **Agent Runtime** is the host process around the model: it owns state,\nthe message transcript, event emission, budgets and tool scheduling.\n\n## Why\n\nThe loop is easy; running it many times, on many concurrent users, without\nlosing or duplicating state, is the hard part. That is where frameworks earn\ntheir keep — and where I need to know what they are doing for me.\n\n## Minimal Implementation\n\nTo be filled in on Day 03 / Day 04, when `app/agent/state.py` and\n`app/agent/events.py` exist.\n\n## Real Project\n\n- Training: `tft-agent-set18/app/agent/`\n- Production: `tft-agent-set17/api/agent/`\n\n## Common Problems\n\n_Open questions I expect to hit:_\n\n- Where does the transcript live if the process restarts?\n- What is the difference between state and session?\n- Which parts of LangGraph replace code I would otherwise write myself?"
+  },
+  {
+    "kind": "concept",
+    "slug": "llm-api",
+    "path": "docs/concepts/llm-api.md",
+    "id": "llm-api",
+    "title": "LLM API",
+    "category": "fundamentals",
+    "status": "learning",
+    "progress": 30,
+    "summary": "The single model turn behind every Agent: messages in, one reply out, plus usage, finish reason and tool calls.",
+    "prerequisites": [],
+    "related": [
+      "agent",
+      "tool-calling"
+    ],
+    "experiments": [
+      "001-basic-llm"
+    ],
+    "days": [],
+    "tags": [],
+    "trainingProject": {
+      "repo": "tft-agent-set18",
+      "path": "app/llm/"
+    },
+    "body": "# LLM API\n\n## Definition\n\nOne call to a chat-completions endpoint: a list of messages (plus tool\nschemas, sampling parameters) in, one assistant reply out, with\n`finish_reason` and `usage` attached.\n\n## Why\n\nEverything an Agent does is built on this one primitive repeated. If the\nsingle-turn contract is not understood — what is stateless, what a message\nrole means, where tool calls appear — the loop above it is guesswork.\n\n## Minimal Implementation\n\n```python\npayload = {\n    \"model\": MODEL,\n    \"messages\": [{\"role\": \"user\", \"content\": \"What is an Agent?\"}],\n    \"temperature\": 0,\n}\nrequest = urllib.request.Request(\n    f\"{BASE_URL}/chat/completions\",\n    data=json.dumps(payload).encode(),\n    headers={\n        \"content-type\": \"application/json\",\n        \"authorization\": f\"Bearer {api_key}\",\n    },\n)\ndata = json.loads(urllib.request.urlopen(request, timeout=60).read())\n```\n\nNon-negotiable extras: a timeout, `usage` accounting per turn, and retry with\nbackoff on 429 / 5xx.\n\n## Real Project\n\n- Training: `tft-agent-set18/app/llm/deepseek.py` and `app/llm/mock.py` — the\n  same interface with a scripted provider so experiments run offline.\n- Production: `tft-agent-set17/api/` — streaming plus provider fallback.\n\n## Common Problems\n\n- No timeout: a hung request looks like a slow Agent.\n- Ignoring `finish_reason: \"length\"` and treating a truncated answer as final.\n- Reusing one client for interactive and batch traffic, so latency budgets\n  collide."
+  },
+  {
+    "kind": "concept",
+    "slug": "tool-calling",
+    "path": "docs/concepts/tool-calling.md",
+    "id": "tool-calling",
+    "title": "Tool Calling",
+    "category": "tools",
+    "status": "learning",
+    "progress": 35,
+    "summary": "A structured request from the model to the runtime: name plus JSON arguments, validated against a schema the model was told about.",
+    "prerequisites": [
+      "agent",
+      "llm-api"
+    ],
+    "related": [
+      "agent-loop"
+    ],
+    "experiments": [
+      "002-tool-calling"
+    ],
+    "days": [],
+    "tags": [],
+    "trainingProject": {
+      "repo": "tft-agent-set18",
+      "path": "app/tools/registry.py"
+    },
+    "productionProject": {
+      "repo": "tft-agent-set17",
+      "path": "api/agent/tools.py"
+    },
+    "body": "# Tool Calling\n\n## Definition\n\nA **tool** is a JSON schema advertised to the model. \"Tool calling\" is the\nmodel replying with `{\"name\": ..., \"arguments\": \"...\"}` instead of prose, and\n`finish_reason: \"tool_calls\"` marking that reply as \"not finished yet\".\n\n## Why\n\nText output cannot affect the world. Tool calling gives the model a\nside-effect channel without giving it code execution, so the runtime keeps\nthe authority to validate, restrict, and log every effect.\n\n## Minimal Implementation\n\n```python\n@dataclass\nclass Tool:\n    name: str\n    description: str\n    parameters: dict          # JSON Schema\n    fn: Callable[..., str]\n\n    def as_schema(self) -> dict:\n        return {\n            \"type\": \"function\",\n            \"function\": {\n                \"name\": self.name,\n                \"description\": self.description,\n                \"parameters\": self.parameters,\n            },\n        }\n```\n\nExecution is a plain dispatch, and the result must return as a `tool`\nmessage carrying the same `tool_call_id`:\n\n```python\n{\"role\": \"tool\", \"tool_call_id\": call.id, \"content\": json.dumps(output)}\n```\n\n## Real Project\n\n- Training: `tft-agent-set18/app/tools/` — registry plus three tools.\n- Production: `tft-agent-set17/api/agent/tools.py` — the same contract, plus\n  caching and auth-bound tools.\n\n## Common Problems\n\n- Vague descriptions: the model selects tools by reading them, so a bad\n  description is a routing bug.\n- Accepting arguments without validating against the schema before running.\n- Returning raw exceptions as tool output — the model reads them as facts and\n  gets creative. Return a structured error instead.\n- Parallel calls: two writes to the same resource, no ordering guarantee."
+  }
+]

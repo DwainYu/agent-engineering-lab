@@ -1,0 +1,69 @@
+[
+  {
+    "kind": "experiment",
+    "slug": "001-basic-llm",
+    "path": "experiments/001-basic-llm/README.md",
+    "id": "001-basic-llm",
+    "number": 1,
+    "title": "One Model Turn",
+    "status": "completed",
+    "language": [
+      "python"
+    ],
+    "concepts": [
+      "llm-api",
+      "agent"
+    ],
+    "day": 1,
+    "trainingProject": {
+      "repo": "tft-agent-set18",
+      "path": "app/llm/deepseek.py"
+    },
+    "body": "# Experiment 001 — One Model Turn\n\n## Goal\n\nCall a chat-completions API with no framework and no helper library — standard\nlibrary only — and print exactly what comes back.\n\n## Architecture\n\n```text\nprompt\n  ↓\nHTTP POST /chat/completions\n  ↓\nchoices[0].message        → text\nchoices[0].finish_reason  → \"stop\"\nusage                     → prompt / completion / total tokens\n```\n\n## What I Learned\n\n- `usage` is the only cost signal there is. If the client does not record it,\n  the Agent has no budget.\n- `finish_reason` is part of the answer, not a diagnostic. `stop` and\n  `length` mean completely different things to the caller.\n- A model turn is stateless: the whole \"conversation\" is me resending the\n  transcript every time.\n\n## Result\n\n```text\n$ DEEPSEEK_API_KEY=*** python3 src/main.py\nfinish_reason : stop\nprompt_tokens : 21\ncompletion    : 148\nanswer        : An Agent is a program that …\n```\n\n## Code\n\nLives in the training project, not here:\n\n- `tft-agent-set18/app/llm/deepseek.py` — the real client\n- `tft-agent-set18/app/llm/mock.py` — scripted provider, so this experiment\n  also runs with no key\n- `tft-agent-set18/experiments/001_basic_llm.py`\n\n## Next Step\n\nExperiment 002: add one tool and observe what changes in the response."
+  },
+  {
+    "kind": "experiment",
+    "slug": "002-tool-calling",
+    "path": "experiments/002-tool-calling/README.md",
+    "id": "002-tool-calling",
+    "number": 2,
+    "title": "One Tool Call, Round Trip",
+    "status": "completed",
+    "language": [
+      "python"
+    ],
+    "concepts": [
+      "tool-calling",
+      "agent-loop"
+    ],
+    "day": 1,
+    "trainingProject": {
+      "repo": "tft-agent-set18",
+      "path": "app/tools/registry.py"
+    },
+    "body": "# Experiment 002 — One Tool Call, Round Trip\n\n## Goal\n\nMake the model call a tool, execute it, and get back a natural-language\nanswer — in exactly one round trip, with no loop.\n\n## Architecture\n\n```text\nUser\n  ↓\nLLM (tools=[get_weather])\n  ↓\ntool_call  {\"city\": \"上海\"}\n  ↓\nTool (python function)\n  ↓\ntool result (role=tool, tool_call_id=...)\n  ↓\nLLM\n  ↓\nAnswer\n```\n\n## What I Learned\n\n- A tool call arrives as `message.tool_calls[]` with `arguments` still a\n  **string**. Parsing is my job, and parse failures are the model's fault\n  only in the sense that my schema description was unclear.\n- `content` is `None` on that turn. Any runtime that ends the conversation on\n  \"empty answer\" kills the Agent here.\n- The `tool_call_id` back-reference is mandatory. Without it the model cannot\n  tell which call a result belongs to once there is more than one.\n\n## Result\n\n```text\n$ python3 src/main.py --mock\n[turn 1] finish=tool_calls  → get_weather({\"city\": \"上海\"})\n[tool  ] {\"city\": \"上海\", \"temperature_c\": 24, \"condition\": \"多云\"}\n[turn 2] finish=stop        → 上海 24°C，多云，穿件薄外套就够了。\n```\n\n## Code\n\n- `tft-agent-set18/app/tools/weather.py`, `tft-agent-set18/app/tools/calculator.py`\n- `tft-agent-set18/app/agent/tools.py` — the registry and dispatcher\n- `tft-agent-set18/experiments/002_tool_calling.py`\n\n## Next Step\n\nExperiment 003: put this round trip inside a `while` loop and add a budget."
+  },
+  {
+    "kind": "experiment",
+    "slug": "003-agent-loop",
+    "path": "experiments/003-agent-loop/README.md",
+    "id": "003-agent-loop",
+    "number": 3,
+    "title": "Mini Agent Loop",
+    "status": "planned",
+    "language": [
+      "python"
+    ],
+    "concepts": [
+      "agent-loop",
+      "tool-calling",
+      "agent-runtime"
+    ],
+    "day": 3,
+    "trainingProject": {
+      "repo": "tft-agent-set18",
+      "path": "app/agent/loop.py"
+    },
+    "body": "# Experiment 003 — Mini Agent Loop\n\n## Goal\n\nRun multi-step tasks without LangGraph: transcript, tool registry, exit test,\nbudget.\n\n## Architecture\n\n_Planned._\n\n```text\nUser → LLM → Tool → Tool Result → LLM → … → Answer\n```\n\n## What I Learned\n\n_Not run yet — this file is the plan, and it becomes the record on Day 03._\n\n## Next Step\n\nStart with a task that needs two different tools, then add a third turn limit\nand observe the failure."
+  }
+]
