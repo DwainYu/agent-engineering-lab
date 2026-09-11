@@ -1,6 +1,7 @@
 import { h2Headings } from "./frontmatter.js";
 import type { Issue } from "./entries.js";
 import type { ContentBundle } from "./load.js";
+import type { AssistConfig, AssistMode } from "./types.js";
 import { PHASES } from "./types.js";
 
 /** Sections every finished Day must contain (§7 / §35). */
@@ -13,6 +14,67 @@ export const REQUIRED_DAY_SECTIONS = [
   "Key Takeaways",
   "Next",
 ] as const;
+
+/** Marker line of a Chinese assistance blockquote, one per mode. */
+export const ASSIST_MARKERS: Record<AssistMode, string> = {
+  brief: "中文理解",
+  deep: "中文深入理解",
+};
+
+export function hasAssistBlock(body: string, marker: string): boolean {
+  return new RegExp(`^\\s{0,3}>\\s*\\*\\*${marker}\\*\\*\\s*$`, "m").test(body);
+}
+
+interface AssistableDoc {
+  path: string;
+  body: string;
+  assist?: AssistConfig;
+}
+
+/**
+ * The frontmatter flag and the Markdown body have to agree: the reading-mode
+ * switch is driven by `assist:`, the text itself lives in the body. Either half
+ * on its own renders assistance nobody can reach, so that is an error; a mode
+ * that does not match the blocks actually present only changes how deep the
+ * reader is promised to go, so that is a warning.
+ */
+export function assistIssues(doc: AssistableDoc): Issue[] {
+  const issues: Issue[] = [];
+  const brief = hasAssistBlock(doc.body, ASSIST_MARKERS.brief);
+  const deep = hasAssistBlock(doc.body, ASSIST_MARKERS.deep);
+
+  if (doc.assist && !brief && !deep) {
+    issues.push({
+      level: "error",
+      file: doc.path,
+      message: `assist declares mode: ${doc.assist.mode} but the body has no "> **${ASSIST_MARKERS[doc.assist.mode]}**" block`,
+    });
+  }
+  if (!doc.assist && (brief || deep)) {
+    issues.push({
+      level: "error",
+      file: doc.path,
+      message:
+        "Chinese assistance block without assist: frontmatter — no reading mode would ever show it",
+    });
+  }
+  if (doc.assist?.mode === "brief" && deep) {
+    issues.push({
+      level: "warning",
+      file: doc.path,
+      message:
+        'assist.mode: brief but the body contains a "> **中文深入理解**" block (expected mode: deep)',
+    });
+  }
+  if (doc.assist?.mode === "deep" && deep === false && brief) {
+    issues.push({
+      level: "warning",
+      file: doc.path,
+      message: "assist.mode: deep but the body only holds brief assistance",
+    });
+  }
+  return issues;
+}
 
 const KNOWN_PHASES = new Set(PHASES.map((phase) => phase.id));
 
@@ -246,6 +308,10 @@ export function validateContent(bundle: ContentBundle): Issue[] {
         });
       }
     }
+  }
+
+  for (const doc of [...days, ...concepts, ...experiments, ...comparisons]) {
+    issues.push(...assistIssues(doc));
   }
 
   return issues;

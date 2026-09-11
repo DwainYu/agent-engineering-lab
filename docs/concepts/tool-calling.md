@@ -69,7 +69,8 @@ message carrying the same `tool_call_id`:
 
 ## Real Project
 
-- Training: `tft-agent-set18/app/tools/` — registry plus three tools.
+- Training: `tft-agent-set18/agent/tools.py` — registry, argument validation and
+  four tools.
 - Production: `tft-agent-set17/api/agent/tools.py` — the same contract, plus
   caching and auth-bound tools.
 

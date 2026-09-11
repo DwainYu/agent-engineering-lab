@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Link, NavLink } from "react-router-dom";
-import { site, summary } from "../../lib/content";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { assistOnPath, site, summary } from "../../lib/content";
+import { useReadingMode, type ReadingMode } from "../../lib/reading";
 import { githubRepoUrl } from "../../lib/paths";
 
 interface NavItem {
@@ -26,6 +27,50 @@ function linkClass({ isActive }: { isActive: boolean }): string {
   return `whitespace-nowrap px-2 py-1 font-mono text-[12px] transition-colors ${
     isActive ? "text-[var(--text)]" : "text-[var(--faint)] hover:text-[var(--text)]"
   }`;
+}
+
+/**
+ * Reading mode, not a language switch: `中文辅助` reveals the Chinese
+ * assistance blocks a note already contains. The control is absent when the
+ * current document has none, so it can never promise text that is not there.
+ */
+function ReadingModeSwitch() {
+  const { pathname } = useLocation();
+  const { mode, setMode } = useReadingMode();
+  if (!assistOnPath(pathname)) return null;
+
+  const options: { id: ReadingMode; label: string; title: string }[] = [
+    { id: "en", label: "EN", title: "English only" },
+    { id: "assist", label: "中文辅助", title: "Reveal Chinese assistance" },
+  ];
+
+  return (
+    <div
+      role="group"
+      aria-label="阅读模式 Reading mode"
+      className="flex items-center rounded-md border border-[var(--line)] p-0.5"
+    >
+      {options.map((option) => {
+        const active = mode === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            title={option.title}
+            aria-pressed={active}
+            onClick={() => setMode(option.id)}
+            className={`rounded px-1.5 py-0.5 font-mono text-[11px] transition-colors ${
+              active
+                ? "bg-[var(--elevate)] text-[var(--text)]"
+                : "text-[var(--faint)] hover:text-[var(--text)]"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export function Header({
@@ -61,6 +106,7 @@ export function Header({
           <span className="hidden font-mono text-[11px] text-[var(--faint)] sm:inline">
             Day {summary.currentDay} / {summary.totalDays}
           </span>
+          <ReadingModeSwitch />
           <a
             href={githubRepoUrl(site.repo)}
             target="_blank"

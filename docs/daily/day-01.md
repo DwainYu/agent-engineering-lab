@@ -38,6 +38,10 @@ difficulty: easy
 estimated_time: 3h
 
 commit_type: learning
+
+assist:
+  language: zh
+  mode: brief
 ---
 
 # Day 01 — What An Agent Actually Is
@@ -85,7 +89,23 @@ Three things I can now separate:
 Anthropic's framing matches this: agents are "typically just LLMs using
 tools in a loop", and the recommendation is to find the simplest solution —
 workflows are preferred over agents wherever the task can be decomposed
+
 ahead of time.
+
+> **中文理解**
+>
+> Workflow 和 Agent 的差别只有一件事：控制流在谁手上。Workflow 的步骤在写代码
+> 时就定死了；Agent 的步骤由模型在运行时决定，所以才需要 `while True`。
+>
+> 三层必须分清：
+>
+> - model 只产出文本，包括"请求调用工具"，它自己什么都不执行
+> - runtime（我的代码）执行工具、把结果写回 transcript、决定是否再来一轮
+> - 两者之间的 contract 就是 message list + tool schemas，这也是模型唯一能
+>   看到的东西
+>
+> 本仓库后面的所有主题（state、context、memory、evaluation）都是在补这个 loop
+> 的脆弱之处，不是额外功能。
 
 ## Source Code Analysis
 
@@ -107,6 +127,14 @@ yourself:
 "tool_calls"` is how the runtime knows to continue instead of stopping.
 - Text is empty on a tool-call turn. A runtime that assumes text and branches
   on "empty answer" ends the loop before the tool ever runs.
+
+> **中文理解**
+>
+> 关键一点：tool call 不是一种 message 类型，而是一种 **finish reason**。
+>
+> `finish_reason: "tool_calls"` 才是 runtime "继续下一轮" 的信号，而这一轮的
+> text 是空的。如果代码写成"没有回答就算结束"，工具还没执行 loop 就停了 ——
+> 这种 bug 只有自己写过 client 才会遇到。
 
 ## What I Didn't Understand
 

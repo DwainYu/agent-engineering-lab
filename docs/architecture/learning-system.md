@@ -83,3 +83,44 @@ Two reasons, both practical:
 | add an architecture doc | `docs/architecture/<name>.md`            | none       |
 | write a comparison      | `docs/comparisons/<slug>.md`             | none       |
 | ask a question          | `docs/questions/open.md` → `resolved.md` | none       |
+
+## Reading mode
+
+The site is English-first. Most source material I read is English, the
+identifiers in the code are English, and the point of the lab is to be able to
+work in that language — so the English text is the content, and it is also the
+record of how the learning actually happened.
+
+Chinese exists as **reading assistance** for the concepts that are hard to read
+quickly. It is written by hand, next to the paragraph it explains, and it is
+explicitly not machine translation: no translated pages, no parallel content
+tree, no i18n framework, no second source of truth.
+
+| Piece                       | Where it lives                                                          |
+| --------------------------- | ----------------------------------------------------------------------- |
+| Which file has assistance   | `assist: { language: zh, mode: brief \| deep }` in the frontmatter      |
+| The assistance text itself  | `> **中文理解**` / `> **中文深入理解**` blockquotes in the same file    |
+| Agreement between the two   | `assistIssues()` in `scripts/lib/validate.ts`                           |
+| Parsed value in the website | `assist` on the generated day / concept / experiment / comparison       |
+| Recognition while rendering | `rehypeChineseAssist()` in `web/src/lib/markdown.ts`                    |
+| The card                    | `web/src/components/learning/ChineseAssistBlock.tsx`                    |
+| Reader's choice             | `EN` / `中文辅助` in `Header.tsx`, held in `lib/reading.ts`             |
+| Persisted preference        | `localStorage` key `lab-reading-mode`, written by `ReadingModeProvider` |
+
+Default is `EN`. In English mode an assistance block renders as nothing at all,
+so an English-only visit looks exactly like a site without this feature. The
+switch only appears on a page whose document actually declares `assist` — a
+note with no Chinese never shows an empty toggle.
+
+Excerpts and previews stay English-first: `excerpt()` drops whole assistance
+blocks before summarising, so lists never fill up with Chinese.
+
+To add assistance to a note, use the project skill:
+
+```text
+/skill:bilingual-learning        # brief: only the hard concepts
+/skill:bilingual-learning deep   # plus deeper explanation where it pays
+```
+
+`mode: brief` and `mode: deep` describe how much depth a file asks for; a file
+containing a deep block must declare `mode: deep`.

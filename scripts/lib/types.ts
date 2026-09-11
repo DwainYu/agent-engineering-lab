@@ -23,6 +23,18 @@ export interface ProjectRef {
   repo: string;
   path?: string;
 }
+/**
+ * Optional Chinese reading assistance for an English-first document.
+ * Absent means the document has no assistance at all; it never means
+ * "translate on demand".
+ */
+export type AssistMode = "brief" | "deep";
+export const ASSIST_MODES: AssistMode[] = ["brief", "deep"];
+
+export interface AssistConfig {
+  language: "zh";
+  mode: AssistMode;
+}
 
 export interface ParsedDoc {
   /** repo-relative path, e.g. docs/daily/day-01.md */
@@ -50,6 +62,8 @@ export interface DayEntry {
   estimatedTime?: string;
   trainingProject?: ProjectRef;
   productionProject?: ProjectRef;
+  assist?: AssistConfig;
+
   body: string;
 }
 
@@ -71,6 +85,8 @@ export interface ConceptEntry {
   tags: string[];
   trainingProject?: ProjectRef;
   productionProject?: ProjectRef;
+  assist?: AssistConfig;
+
   body: string;
 }
 
@@ -89,6 +105,8 @@ export interface ExperimentEntry {
   summary?: string;
   trainingProject?: ProjectRef;
   productionProject?: ProjectRef;
+  assist?: AssistConfig;
+
   body: string;
 }
 
@@ -105,6 +123,8 @@ export interface ComparisonEntry {
   concepts: string[];
   trainingProject?: ProjectRef;
   productionProject?: ProjectRef;
+  assist?: AssistConfig;
+
   body: string;
 }
 

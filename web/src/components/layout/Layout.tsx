@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Footer } from "./Footer";
 import { Header } from "./Header";
+import { ReadingModeProvider } from "./ReadingModeProvider";
 
 function useThemeClass() {
   const [theme, setTheme] = useState<string>(() => {
@@ -27,11 +28,13 @@ export function Layout({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <Header theme={theme} onToggleTheme={toggle} />
-      <main className="flex-1">{children}</main>
-      <Footer />
-    </div>
+    <ReadingModeProvider>
+      <div className="flex min-h-dvh flex-col">
+        <Header theme={theme} onToggleTheme={toggle} />
+        <main className="flex-1">{children}</main>
+        <Footer />
+      </div>
+    </ReadingModeProvider>
   );
 }
 

@@ -32,7 +32,7 @@ commit_type: learning
 ## Today's Goal
 
 Write the LLM client myself: request, response, usage accounting, streaming
-deltas, retry on 429 — so that `app/llm/` in Set 18 is code I understand
+deltas, retry on 429 — so that `agent/provider.py` in Set 18 is code I understand
 rather than code I borrowed.
 
 ## What I Learned

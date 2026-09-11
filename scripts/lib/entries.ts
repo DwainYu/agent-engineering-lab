@@ -8,6 +8,8 @@ import {
   type RawDoc,
 } from "./frontmatter.js";
 import type {
+  AssistConfig,
+  AssistMode,
   ComparisonEntry,
   ConceptEntry,
   DayEntry,
@@ -15,7 +17,7 @@ import type {
   ParsedDoc,
   Status,
 } from "./types.js";
-import { STATUSES } from "./types.js";
+import { ASSIST_MODES, STATUSES } from "./types.js";
 
 export interface Issue {
   level: "error" | "warning";
@@ -88,6 +90,65 @@ function asStringArrayField(value: unknown): string[] {
   return asStringArray(value);
 }
 
+/**
+ * `assist: { language: zh, mode: brief | deep }` is optional on every document
+ * kind. A malformed block is reported against the field instead of being
+ * dropped: a note that believes it has Chinese assistance but does not is the
+ * one failure this feature cannot have.
+ */
+function parseAssist(
+  data: Record<string, unknown>,
+  path: string,
+  issues: Issue[],
+): AssistConfig | undefined {
+  const raw = data.assist;
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    issues.push({
+      level: "error",
+      file: path,
+      message: 'assist must be a mapping with "language" and "mode"',
+    });
+    return undefined;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const language = asString(record.language);
+  if (language === undefined) {
+    issues.push({
+      level: "error",
+      file: path,
+      message: 'Missing field: assist.language (expected "zh")',
+    });
+  } else if (language !== "zh") {
+    issues.push({
+      level: "error",
+      file: path,
+      message: `assist.language must be "zh", got ${language}`,
+    });
+  }
+
+  const mode = asString(record.mode)?.toLowerCase();
+  const valid = mode !== undefined && ASSIST_MODES.includes(mode as AssistMode);
+  if (mode === undefined) {
+    issues.push({
+      level: "error",
+      file: path,
+      message: `Missing field: assist.mode (expected ${ASSIST_MODES.join(" | ")})`,
+    });
+  } else if (!valid) {
+    issues.push({
+      level: "error",
+      file: path,
+      message: `assist.mode must be ${ASSIST_MODES.join(" | ")}, got ${mode}`,
+    });
+  }
+
+  return language === "zh" && valid
+    ? { language: "zh", mode: mode as AssistMode }
+    : undefined;
+}
+
 export function toDayEntry(doc: ParsedDoc, issues: Issue[]): DayEntry | null {
   if (!requireFrontmatter(doc, issues, "Day")) return null;
   const slug = slugFromPath(doc.path);
@@ -140,6 +201,8 @@ export function toDayEntry(doc: ParsedDoc, issues: Issue[]): DayEntry | null {
     productionProject: asProjectRef(
       doc.data.production_project ?? doc.data.productionProject,
     ),
+    assist: parseAssist(doc.data, doc.path, issues),
+
     body: doc.body,
   };
 }
@@ -197,6 +260,8 @@ export function toConceptEntry(doc: ParsedDoc, issues: Issue[]): ConceptEntry | 
     productionProject: asProjectRef(
       doc.data.production_project ?? doc.data.productionProject,
     ),
+    assist: parseAssist(doc.data, doc.path, issues),
+
     body: doc.body,
   };
 }
@@ -243,6 +308,8 @@ export function toExperimentEntry(
         doc.data.production_project ??
         doc.data.productionProject,
     ),
+    assist: parseAssist(doc.data, doc.path, issues),
+
     body: doc.body,
   };
 }
@@ -280,6 +347,8 @@ export function toComparisonEntry(
     productionProject: asProjectRef(
       doc.data.production_project ?? doc.data.productionProject,
     ),
+    assist: parseAssist(doc.data, doc.path, issues),
+
     body: doc.body,
   };
 }

@@ -57,7 +57,8 @@ backoff on 429 / 5xx.
 
 ## Real Project
 
-- Training: `tft-agent-set18/app/llm/deepseek.py` and `app/llm/mock.py` — the
+- Training: `tft-agent-set18/agent/provider.py` — `OpenAICompatProvider` for the
+  live endpoint and `ScriptedProvider` for deterministic runs — the
   same interface with a scripted provider so experiments run offline.
 - Production: `tft-agent-set17/api/` — streaming plus provider fallback.
 

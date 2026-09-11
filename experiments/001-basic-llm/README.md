@@ -11,7 +11,7 @@ concepts:
 day: 1
 training_project:
   repo: tft-agent-set18
-  path: app/llm/deepseek.py
+  path: agent/provider.py
 ---
 
 # Experiment 001 — One Model Turn

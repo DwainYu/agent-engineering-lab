@@ -11,7 +11,7 @@ concepts:
 day: 1
 training_project:
   repo: tft-agent-set18
-  path: app/tools/registry.py
+  path: agent/tools.py
 ---
 
 # Experiment 002 — One Tool Call, Round Trip

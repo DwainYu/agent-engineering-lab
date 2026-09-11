@@ -3,7 +3,11 @@ import { extractFrontmatter } from "../scripts/lib/frontmatter.js";
 import { parseSource, toConceptEntry, toDayEntry } from "../scripts/lib/entries.js";
 import { loadContent } from "../scripts/lib/load.js";
 import { buildProgress } from "../scripts/lib/progress.js";
-import { validateContent } from "../scripts/lib/validate.js";
+import {
+  assistIssues,
+  hasAssistBlock,
+  validateContent,
+} from "../scripts/lib/validate.js";
 
 const DAY = `---
 day: 7
@@ -108,6 +112,121 @@ describe("entry parsing", () => {
     );
     expect(concept?.progress).toBe(50);
     expect(issues).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Chinese assistance: frontmatter, body, and the two halves agreeing.
+ * ------------------------------------------------------------------ */
+
+const ASSIST_BODY = `
+> **中文理解**
+>
+> Agent Loop 就是模型决策 → 工具执行 → 结果回填，直到模型给出最终答案或预算耗尽。
+`;
+
+function dayWithAssist(assistYaml: string): string {
+  return DAY.replace("training_project:", `assist:\n${assistYaml}\n\ntraining_project:`);
+}
+
+function parsedDay(source: string) {
+  const issues: ReturnType<typeof loadContent>["issues"] = [];
+  const entry = toDayEntry(parseSource("docs/daily/day-07.md", source), issues);
+  return { entry, issues };
+}
+
+describe("chinese assistance frontmatter", () => {
+  it("parses legacy content that declares no assist at all", () => {
+    const { entry, issues } = parsedDay(DAY);
+    expect(issues).toEqual([]);
+    expect(entry?.assist).toBeUndefined();
+  });
+
+  it("parses a valid assist config", () => {
+    const { entry, issues } = parsedDay(dayWithAssist("  language: zh\n  mode: brief"));
+    expect(issues).toEqual([]);
+    expect(entry?.assist).toEqual({ language: "zh", mode: "brief" });
+  });
+
+  it("rejects an assist mode that is not brief or deep", () => {
+    const { entry, issues } = parsedDay(dayWithAssist("  language: zh\n  mode: full"));
+    expect(entry?.assist).toBeUndefined();
+    expect(issues.map((issue) => issue.message).join("\n")).toContain(
+      "assist.mode must be brief | deep, got full",
+    );
+  });
+
+  it("rejects a language other than zh", () => {
+    const { issues } = parsedDay(dayWithAssist("  language: en\n  mode: brief"));
+    expect(issues.map((issue) => issue.message).join("\n")).toContain(
+      'assist.language must be "zh", got en',
+    );
+  });
+
+  it("requires both assist fields", () => {
+    const { issues } = parsedDay(dayWithAssist("  mode: brief"));
+    expect(issues.map((issue) => issue.message).join("\n")).toContain(
+      'Missing field: assist.language (expected "zh")',
+    );
+  });
+});
+
+describe("chinese assistance body", () => {
+  it("finds only the marker line, not any old blockquote", () => {
+    expect(hasAssistBlock(ASSIST_BODY, "中文理解")).toBe(true);
+    expect(hasAssistBlock("> 普通的引用\n", "中文理解")).toBe(false);
+    expect(hasAssistBlock("> 中文理解在正文里出现。\n", "中文理解")).toBe(false);
+  });
+
+  it("fails when assist is declared but no block exists", () => {
+    const issues = assistIssues({
+      path: "docs/daily/day-07.md",
+      body: "## Today's Goal\n\nx\n",
+      assist: { language: "zh", mode: "brief" },
+    });
+    expect(issues[0]?.level).toBe("error");
+    expect(issues[0]?.message).toContain('no "> **中文理解**" block');
+  });
+
+  it("fails when a block exists without assist frontmatter", () => {
+    const issues = assistIssues({ path: "docs/daily/day-07.md", body: ASSIST_BODY });
+    expect(issues.map((issue) => issue.message).join("\n")).toContain(
+      "without assist: frontmatter",
+    );
+  });
+
+  it("warns when a deep block is declared as brief", () => {
+    const issues = assistIssues({
+      path: "docs/daily/day-07.md",
+      body: ASSIST_BODY + "\n> **中文深入理解**\n>\n> x\n",
+      assist: { language: "zh", mode: "brief" },
+    });
+    expect(issues.map((issue) => issue.level)).toEqual(["warning"]);
+  });
+
+  it("accepts a block that matches its declared mode", () => {
+    expect(
+      assistIssues({
+        path: "docs/daily/day-07.md",
+        body: ASSIST_BODY,
+        assist: { language: "zh", mode: "brief" },
+      }),
+    ).toEqual([]);
+  });
+
+  it("keeps the real repository content self-consistent", () => {
+    const bundle = loadContent();
+    const docs = [
+      ...bundle.days,
+      ...bundle.concepts,
+      ...bundle.experiments,
+      ...bundle.comparisons,
+    ];
+    const seeded = docs.filter((doc) => doc.assist !== undefined);
+    expect(seeded.map((doc) => doc.assist?.mode).sort()).toEqual(["brief", "deep"]);
+    for (const doc of docs) {
+      expect(assistIssues(doc)).toEqual([]);
+    }
   });
 });
 

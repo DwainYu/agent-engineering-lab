@@ -63,7 +63,7 @@ condition, budget.
 
 ## Real Project
 
-- Training: `tft-agent-set18/app/agent/loop.py` — this minimal loop.
+- Training: `tft-agent-set18/agent/loop.py` — this minimal loop.
 - Production: `tft-agent-set17/api/agent/graph.py` — the same loop expressed
   as a LangGraph state graph, with routing, checkpoints and streaming.
 

@@ -207,6 +207,24 @@ body {
   @apply mt-1.5 size-3.5 accent-[var(--accent)];
 }
 
+/* Chinese assistance cards live inside the same prose but read one step quieter
+   than the English body: dim text, tighter paragraphs, no italic — italics are
+   a translation tell and hurt CJK legibility. */
+.markdown .assist-body {
+  --tw-prose-body: var(--dim);
+  --tw-prose-quotes: var(--dim);
+  --tw-prose-bullets: var(--faint);
+}
+.markdown .assist-body :where(p) {
+  @apply my-2 text-[0.92rem] leading-7 first:mt-0 last:mb-0;
+}
+.markdown .assist-body :where(ul, ol) {
+  @apply my-2 text-[0.92rem] leading-7 first:mt-0 last:mb-0;
+}
+.markdown .assist-body :where(li) {
+  @apply my-1;
+}
+
 /* -------------------------------------------------------------- scrollbars */
 
 ::-webkit-scrollbar {

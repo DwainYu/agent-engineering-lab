@@ -34,12 +34,12 @@ their keep — and where I need to know what they are doing for me.
 
 ## Minimal Implementation
 
-To be filled in on Day 03 / Day 04, when `app/agent/state.py` and
-`app/agent/events.py` exist.
+To be filled in on Day 03 / Day 04, when `agent/state.py` and
+`agent/events.py` exist.
 
 ## Real Project
 
-- Training: `tft-agent-set18/app/agent/`
+- Training: `tft-agent-set18/agent/` — `loop.py` holds the turn, `trace.py` the events.
 - Production: `tft-agent-set17/api/agent/`
 
 ## Common Problems

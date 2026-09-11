@@ -124,6 +124,33 @@ npm run dev          # look at it
 `npm run build` regenerates before bundling (`prebuild`), so the site can
 never ship a stale progress number.
 
+## Reading modes
+
+Content is written in English first. Hard concepts may carry a short Chinese
+reading aid, written by hand inside the same Markdown file:
+
+```markdown
+> **中文理解**
+>
+> Agent Loop 可以理解为：模型决策 → 调用工具 → 获得结果 → 再次决策。
+```
+
+A file that uses those blocks declares `assist: { language: zh, mode: brief }`
+in its frontmatter, and `npm run validate` fails if the two halves disagree.
+The header then offers `EN` / `中文辅助` (default `EN`, remembered in
+`localStorage`). This is assistance, not translation: there are no translated
+pages and no i18n framework. See `docs/architecture/learning-system.md` and
+`.pi/skills/bilingual-learning/SKILL.md`.
+
+## Viewing the site
+
+```bash
+npm run dev      # http://localhost:5173/  (hot reload, base path /)
+npm run build && npm run preview   # production build, /agent-engineering-lab/
+```
+
+Live deployment: `https://dwainyu.github.io/agent-engineering-lab/`
+
 ## Quality gates
 
 ```bash

@@ -67,6 +67,32 @@ export function comparisonsForConcept(id: string): ComparisonEntry[] {
   return comparisons.filter((comparison) => comparison.concepts.includes(id));
 }
 
+/**
+ * Does the document behind this route carry Chinese assistance? The reading
+ * mode switch appears only where the answer is yes: an empty toggle is worse
+ * than no toggle, because it promises text that is not there.
+ */
+export function assistOnPath(pathname: string): boolean {
+  const param = (pattern: RegExp) => pathname.match(pattern)?.[1];
+
+  const day = param(/^\/learn\/day\/([^/]+)$/);
+  if (day !== undefined) return dayByNumber(day)?.assist !== undefined;
+
+  const concept = param(/^\/concepts\/([^/]+)$/);
+  if (concept !== undefined)
+    return conceptById(decodeURIComponent(concept))?.assist !== undefined;
+
+  const experiment = param(/^\/experiments\/([^/]+)$/);
+  if (experiment !== undefined)
+    return experimentById(decodeURIComponent(experiment))?.assist !== undefined;
+
+  const comparison = param(/^\/comparisons\/([^/]+)$/);
+  if (comparison !== undefined)
+    return comparisonById(decodeURIComponent(comparison))?.assist !== undefined;
+
+  return false;
+}
+
 /** Newest completed first: what I actually worked on recently. */
 export function recentDays(count: number): DayEntry[] {
   return days
