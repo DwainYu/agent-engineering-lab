@@ -14,11 +14,11 @@ English text it follows.
 
 `/skill:bilingual-learning` accepts an optional mode argument:
 
-| Mode         | When to use                                                    | What you produce                                                        |
-| ------------ | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `brief`      | Default. The reader already reads English; hard spots hurt.     | Chinese only for the genuinely difficult concepts                        |
-| `deep`       | Explicitly requested, or the concept is architecture-level hard | Brief version plus a deeper Chinese explanation of the mechanics         |
-| `translate`  | Only when the user explicitly asks for a translation pass       | Hand off to the separate translation task described at the end           |
+| Mode        | When to use                                                     | What you produce                                                 |
+| ----------- | --------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `brief`     | Default. The reader already reads English; hard spots hurt.     | Chinese only for the genuinely difficult concepts                |
+| `deep`      | Explicitly requested, or the concept is architecture-level hard | Brief version plus a deeper Chinese explanation of the mechanics |
+| `translate` | Only when the user explicitly asks for a translation pass       | Hand off to the separate translation task described at the end   |
 
 ## Hard rules
 
