@@ -3,7 +3,7 @@
     "project": "Agent Engineering Lab",
     "version": "0.1.0",
     "totalDays": 30,
-    "updatedAt": "2026-09-11"
+    "updatedAt": "2026-09-13"
   },
   "summary": {
     "totalDays": 30,
@@ -59,18 +59,18 @@
       "progress": 45
     },
     {
+      "id": "llm-api",
+      "name": "LLM API",
+      "category": "fundamentals",
+      "status": "learning",
+      "progress": 45
+    },
+    {
       "id": "tool-calling",
       "name": "Tool Calling",
       "category": "tools",
       "status": "learning",
       "progress": 35
-    },
-    {
-      "id": "llm-api",
-      "name": "LLM API",
-      "category": "fundamentals",
-      "status": "learning",
-      "progress": 30
     },
     {
       "id": "agent-runtime",

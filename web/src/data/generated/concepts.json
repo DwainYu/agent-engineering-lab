@@ -97,7 +97,7 @@
     "title": "LLM API",
     "category": "fundamentals",
     "status": "learning",
-    "progress": 30,
+    "progress": 45,
     "summary": "The single model turn behind every Agent: messages in, one reply out, plus usage, finish reason and tool calls.",
     "prerequisites": [],
     "related": [
@@ -105,7 +105,8 @@
       "tool-calling"
     ],
     "experiments": [
-      "001-basic-llm"
+      "001-basic-llm",
+      "002-tool-calling"
     ],
     "days": [],
     "tags": [],
@@ -113,7 +114,7 @@
       "repo": "tft-agent-set18",
       "path": "agent/provider.py"
     },
-    "body": "# LLM API\n\n## Definition\n\nOne call to a chat-completions endpoint: a list of messages (plus tool\nschemas, sampling parameters) in, one assistant reply out, with\n`finish_reason` and `usage` attached.\n\n## Why\n\nEverything an Agent does is built on this one primitive repeated. If the\nsingle-turn contract is not understood — what is stateless, what a message\nrole means, where tool calls appear — the loop above it is guesswork.\n\n## Minimal Implementation\n\n```python\npayload = {\n    \"model\": MODEL,\n    \"messages\": [{\"role\": \"user\", \"content\": \"What is an Agent?\"}],\n    \"temperature\": 0,\n}\nrequest = urllib.request.Request(\n    f\"{BASE_URL}/chat/completions\",\n    data=json.dumps(payload).encode(),\n    headers={\n        \"content-type\": \"application/json\",\n        \"authorization\": f\"Bearer {api_key}\",\n    },\n)\ndata = json.loads(urllib.request.urlopen(request, timeout=60).read())\n```\n\nNon-negotiable extras: a timeout, `usage` accounting per turn, and retry with\nbackoff on 429 / 5xx.\n\n## Real Project\n\n- Training: `tft-agent-set18/agent/provider.py` — `OpenAICompatProvider` for the\n  live endpoint and `ScriptedProvider` for deterministic runs — the\n  same interface with a scripted provider so experiments run offline.\n- Production: `tft-agent-set17/api/` — streaming plus provider fallback.\n\n## Common Problems\n\n- No timeout: a hung request looks like a slow Agent.\n- Ignoring `finish_reason: \"length\"` and treating a truncated answer as final.\n- Reusing one client for interactive and batch traffic, so latency budgets\n  collide."
+    "body": "# LLM API\n\n## Definition\n\nOne call to a chat-completions endpoint: a list of messages (plus tool\nschemas, sampling parameters) in, one assistant reply out, with\n`finish_reason` and `usage` attached.\n\n## Why\n\nEverything an Agent does is built on this one primitive repeated. If the\nsingle-turn contract is not understood — what is stateless, what a message\nrole means, where tool calls appear — the loop above it is guesswork.\n\n## Minimal Implementation\n\n```python\npayload = {\n    \"model\": MODEL,\n    \"messages\": [{\"role\": \"user\", \"content\": \"What is an Agent?\"}],\n    \"temperature\": 0,\n}\nrequest = urllib.request.Request(\n    f\"{BASE_URL}/chat/completions\",\n    data=json.dumps(payload).encode(),\n    headers={\n        \"content-type\": \"application/json\",\n        \"authorization\": f\"Bearer {api_key}\",\n    },\n)\ndata = json.loads(urllib.request.urlopen(request, timeout=60).read())\n```\n\nNon-negotiable extras: a timeout, `usage` accounting per turn, and retry with\nbackoff on 429 / 5xx.\n\n## Real Project\n\n- Training: `tft-agent-set18/agent/provider.py` — `OpenAICompatProvider`\n  (ModelScope API-Inference at `https://api-inference.modelscope.cn/v1`, any\n  OpenAI-compatible base URL works) and `ScriptedProvider` behind the same\n  `complete(messages, tools)` interface, so experiments run offline.\n- Production: `tft-agent-set17/api/` — streaming plus provider fallback.\n\n## Measured\n\nNumbers from running the real endpoint on 2026-09-12, not from documentation:\n\n| Measurement                                          | Value                 |\n| ---------------------------------------------------- | --------------------- |\n| Same two messages, no `tools`                         | `prompt_tokens=37`     |\n| Same two messages, four tool schemas                  | `prompt_tokens=501`    |\n| One tool round trip (Experiment 002, 2 turns)         | 1 205 tokens           |\n| Four-turn loop (Experiment 003)                       | 2 698 tokens           |\n| Repeat of Experiment 002 at `temperature: 0`          | 4 runs, identical cost |\n| `usage` fields actually returned                       | prompt / completion / total |\n\nThree consequences for how the runtime is written:\n\n- The schemas, not the conversation, are the biggest fixed cost in a prompt.\n  Offer four tools and every turn pays for them; a tool-count budget is a token\n  budget.\n- Repeatability at `temperature: 0` is what lets a script stand in for a model.\n  It held for the small tasks here; it did not hold for a trimmed, ambiguous\n  task (Experiment 005 answered differently twice).\n- Endpoint-specific knobs belong to the provider constructor (`enable_thinking`,\n  `max_tokens`), never to the loop. An empty `content` with `tool_calls` set is\n  normal; an empty `content` with `finish_reason: stop` is a model answering\n  nothing, and only `usage` plus the finish reason tell those apart.\n\n## Common Problems\n\n- No timeout: a hung request looks like a slow Agent.\n- Ignoring `finish_reason: \"length\"` and treating a truncated answer as final.\n- Reusing one client for interactive and batch traffic, so latency budgets\n  collide."
   },
   {
     "kind": "concept",

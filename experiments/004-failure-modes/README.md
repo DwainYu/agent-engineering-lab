@@ -71,6 +71,20 @@ stop reasons:
 Recoveries reached `final-answer`; the two structural limits stopped the run
 with a reason. That split is the whole point of a runtime.
 
+### Why this notebook stays scripted
+
+Every case here is built with `ScriptedProvider` even under `--real`. A failure
+catalogue has to be reproducible: if the injected turn comes from a live model,
+the case either does not happen today or happens differently tomorrow, and the
+test that pins the stop reason becomes noise. The live endpoint contributes the
+*shape* of these failures instead — `ProviderError` for a missing key, an HTTP
+error class after three attempts with backoff, and an empty `content` turn that
+carries only `tool_calls`.
+
+What a live model does add is a new failure that no script invents: probing for
+keys that do not exist (Experiment 005's real runs), which burns turns while
+looking perfectly reasonable in the trace.
+
 ## Code
 
 - `agent/loop.py` — `_dispatch`, `repeat_limit`, `max_tool_calls`

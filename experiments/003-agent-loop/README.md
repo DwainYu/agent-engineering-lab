@@ -65,6 +65,26 @@ stop_reason   : final-answer
 
 Three different tools, four model calls, no framework, 200 lines of loop.
 
+### Against the live endpoint
+
+Run on 2026-09-12 against ModelScope API-Inference (魔搭社区), model `Qwen/Qwen3.8-Flash-Next`, `enable_thinking: false`, `max_tokens: 1024`:
+
+```text
+$ python3 experiments/e03_agent_loop.py --real
+answer        : The value is **100.0** — computed as 12.5 × 8, stored under the
+                key `order_total`, and confirmed by reading it back.
+turns         : 4
+tool calls    : 3
+messages      : 9 (grows every turn)
+tokens        : 2698
+stop reason   : final-answer
+```
+
+The scripted version of this run spends 8 tokens; the live one spends 2 698 on
+the same four turns. Ratio ≈ 340×, and it is entirely re-sent context: history
+plus the schemas noted in Experiment 001. That is the number that makes
+`token_budget` a first-class control instead of a safety flag.
+
 ## Code
 
 - `agent/loop.py` — `Agent.run`, `AgentConfig`, the three guards

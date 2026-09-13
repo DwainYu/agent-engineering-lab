@@ -148,7 +148,7 @@ yourself:
   `(tool, arguments)` refuses the third identical call and hands the model an
   observation it can act on.)_
 
-## Questions Asked to DeepSeek
+## Questions Asked to the Model
 
 ### Question
 
@@ -237,6 +237,6 @@ I can now explain:
 ## Next
 
 Day 02 — LLM API: streaming, usage and the failure modes of the client. First
-action there: run `e01..e05 --real` against DeepSeek with a key, so token
-accounting stops being a scripted number and retry/backoff gets tested against
-a real 429.
+action there: run `e01..e05 --real` against a live endpoint, so token accounting
+stops being a scripted number. (Done on 2026-09-12 against ModelScope
+API-Inference; the retry/backoff path still has not met a real 429.)

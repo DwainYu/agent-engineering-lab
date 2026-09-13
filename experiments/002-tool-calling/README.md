@@ -64,6 +64,31 @@ observations  : 1
  5. assistant '(17 + 28) * 4 = 180.'
 ```
 
+Run on 2026-09-12 against ModelScope API-Inference (魔搭社区), model `Qwen/Qwen3.8-Flash-Next`, `enable_thinking: false`, `max_tokens: 1024`:
+
+```text
+$ python3 experiments/e02_tool_calling.py --real
+answer        : (17 + 28) * 4 = 180
+stop reason   : final-answer
+turns / tools / tokens : 2 / 1 / 1205
+observations  : 1
+```
+
+Same message shape as the scripted run — `finish_reason: tool_calls` on turn 1
+with empty `content`, then a `tool` message, then the answer. I ran it four
+times: identical `turns / tools / tokens` every time, same tool call, same
+number. The only drift is phrasing — the live answer lost my scripted full stop.
+
+Two things that follow. First, at `temperature: 0` this endpoint is repeatable
+enough that the script in `ScriptedProvider` is a fair stand-in, which is what
+lets the rest of the experiments stay deterministic. Second, 1 205 prompt tokens
+bought one arithmetic call, because every turn re-sends the schemas measured in
+Experiment 001.
+
+What this run does *not* show is a model refusing to use the tool. It has always
+called it here, so "no tool call means done" is still a signal I have only tested
+with a script.
+
 The `calculator` tool is an AST walk, not `eval()` — the model's argument
 string is untrusted input, so parsing it is also a safety boundary.
 

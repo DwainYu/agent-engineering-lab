@@ -3,7 +3,7 @@ id: llm-api
 title: LLM API
 category: fundamentals
 status: learning
-progress: 30
+progress: 45
 summary: "The single model turn behind every Agent: messages in, one reply out, plus usage, finish reason and tool calls."
 
 prerequisites: []
@@ -13,6 +13,7 @@ related:
 
 experiments:
   - 001-basic-llm
+  - 002-tool-calling
 
 training_project:
   repo: tft-agent-set18
@@ -57,10 +58,37 @@ backoff on 429 / 5xx.
 
 ## Real Project
 
-- Training: `tft-agent-set18/agent/provider.py` — `OpenAICompatProvider` for the
-  live endpoint and `ScriptedProvider` for deterministic runs — the
-  same interface with a scripted provider so experiments run offline.
+- Training: `tft-agent-set18/agent/provider.py` — `OpenAICompatProvider`
+  (ModelScope API-Inference at `https://api-inference.modelscope.cn/v1`, any
+  OpenAI-compatible base URL works) and `ScriptedProvider` behind the same
+  `complete(messages, tools)` interface, so experiments run offline.
 - Production: `tft-agent-set17/api/` — streaming plus provider fallback.
+
+## Measured
+
+Numbers from running the real endpoint on 2026-09-12, not from documentation:
+
+| Measurement                                          | Value                 |
+| ---------------------------------------------------- | --------------------- |
+| Same two messages, no `tools`                         | `prompt_tokens=37`     |
+| Same two messages, four tool schemas                  | `prompt_tokens=501`    |
+| One tool round trip (Experiment 002, 2 turns)         | 1 205 tokens           |
+| Four-turn loop (Experiment 003)                       | 2 698 tokens           |
+| Repeat of Experiment 002 at `temperature: 0`          | 4 runs, identical cost |
+| `usage` fields actually returned                       | prompt / completion / total |
+
+Three consequences for how the runtime is written:
+
+- The schemas, not the conversation, are the biggest fixed cost in a prompt.
+  Offer four tools and every turn pays for them; a tool-count budget is a token
+  budget.
+- Repeatability at `temperature: 0` is what lets a script stand in for a model.
+  It held for the small tasks here; it did not hold for a trimmed, ambiguous
+  task (Experiment 005 answered differently twice).
+- Endpoint-specific knobs belong to the provider constructor (`enable_thinking`,
+  `max_tokens`), never to the loop. An empty `content` with `tool_calls` set is
+  normal; an empty `content` with `finish_reason: stop` is a model answering
+  nothing, and only `usage` plus the finish reason tell those apart.
 
 ## Common Problems
 

@@ -65,6 +65,39 @@ Twenty past turns were discarded and the task still completed. The same script
 with a 40-token budget keeps only the system prompt plus the last turn — the
 run still answers, but now the "memory" is provably the tool, not the context.
 
+### Against the live endpoint: the same run twice, twice differently
+
+Run on 2026-09-12 against ModelScope API-Inference (魔搭社区), model `Qwen/Qwen3.8-Flash-Next`, `enable_thinking: false`, `max_tokens: 1024`:
+
+```text
+$ python3 experiments/e05_context_trim.py --real   # run A
+answer        : I can retrieve the stored figure, but I can't confirm it.
+                **What I found:** `order_total` = 100.0 …
+stop reason   : final-answer
+turns / tools / tokens : 4 / 6 / 5213
+turn  3 note_get subtotal  → ERROR: no note stored under 'subtotal'
+turn  3 note_get tax       → ERROR: no note stored under 'tax'
+turn  3 note_get shipping  → ERROR: no note stored under 'shipping'
+turn  3 note_get discount  → ERROR: no note stored under 'discount'
+
+$ python3 experiments/e05_context_trim.py --real   # run B, same inputs
+answer        : (empty)
+stop reason   : max-turns
+turns / tools / tokens : 4 / 4 / 4730
+```
+
+Run A read the stored value, then went hunting through four key names that the
+trimming had removed from its view, and answered honestly that it could not
+confirm the figure. Run B never converged: it kept asking, and the turn budget
+stopped it with no answer at all.
+
+The scripted version of this experiment could not teach me that. It always
+answers, because its next turn is written down. With a live model, trimming the
+context does not just lose tokens — it removes the premise the model was
+reasoning from, and whether the run survives that is a property of the model's
+behaviour on that day, not of my code. Budgets convert "lost context" into a
+stop reason you can see; nothing recovers the answer.
+
 ## Code
 
 - `tft-agent-set18/agent/context.py` — `estimate_tokens`, `trim`
