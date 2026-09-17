@@ -1,6 +1,8 @@
 ---
 id: custom-agent-vs-langgraph
 title: Hand-Written Agent Loop vs LangGraph
+language: en
+revision: 1
 date: "2026-09-10"
 status: learning
 summary: Where a hand-written loop stops being cheaper than a framework, measured by writing both.

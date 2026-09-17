@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import type { ConceptEntry } from "../../../../scripts/lib/types";
 import { statusGlyph, statusTextClass } from "../../lib/status";
+import { langHref, useLanguage } from "../../lib/language";
+import { t } from "../../lib/strings";
 
 const GROUP_ORDER = ["fundamentals", "runtime", "tools", "architecture"];
 
@@ -9,6 +11,8 @@ const GROUP_ORDER = ["fundamentals", "runtime", "tools", "architecture"];
  * Columns are layers, links are prerequisite → concept.
  */
 export function ConceptGraph({ concepts }: { concepts: ConceptEntry[] }) {
+  const { language } = useLanguage();
+
   const byCategory = new Map<string, ConceptEntry[]>();
   for (const concept of concepts) {
     const list = byCategory.get(concept.category) ?? [];
@@ -71,7 +75,7 @@ export function ConceptGraph({ concepts }: { concepts: ConceptEntry[] }) {
         height={height}
         className="min-w-full"
         role="img"
-        aria-label="Concept map"
+        aria-label={t(language, "label.map")}
       >
         {categories.map((category, index) => (
           <text
@@ -110,7 +114,7 @@ export function ConceptGraph({ concepts }: { concepts: ConceptEntry[] }) {
               height={32}
             >
               <Link
-                to={`/concepts/${concept.id}`}
+                to={langHref(language, `concepts/${concept.id}`)}
                 className="flex h-full items-center gap-2 truncate rounded-md border border-[var(--line)] bg-[var(--bg)] px-2.5 font-mono text-[11px] text-[var(--text)] no-underline transition-colors hover:border-[var(--accent)]/50"
               >
                 <span className={statusTextClass[concept.status]} aria-hidden>

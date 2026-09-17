@@ -1,6 +1,9 @@
 ---
+id: day-03
 day: 3
 title: Agent State And Termination
+language: en
+revision: 1
 date: "2026-09-12"
 status: planned
 phase: runtime

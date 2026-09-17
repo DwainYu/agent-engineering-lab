@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadContent } from "./lib/load.js";
 import { buildProgress } from "./lib/progress.js";
+import { DEFAULT_LANGUAGE, LANGUAGE_STORAGE_KEY, LANGUAGES } from "./lib/language.js";
 import { summarize, validateContent } from "./lib/validate.js";
 
 const bundle = loadContent();
@@ -36,14 +37,29 @@ write("data/progress.json", progress);
 
 // build-time content data consumed by React (§25) — never scanned at runtime
 const generated = "web/src/data/generated";
+
+// one bundle per language tree: the site never falls back between them,
+// it renders the tree the URL asked for.
+for (const language of LANGUAGES) {
+  write(`${generated}/content.${language}.json`, bundle.byLanguage[language]);
+}
+
+// translation drift: one row per English document.
+write(`${generated}/sync.json`, {
+  languages: LANGUAGES,
+  defaultLanguage: DEFAULT_LANGUAGE,
+  storageKey: LANGUAGE_STORAGE_KEY,
+  counts: progress.summary.translation,
+  documents: bundle.translations,
+});
+
 write(`${generated}/progress.json`, progress);
-write(`${generated}/days.json`, bundle.days);
-write(`${generated}/concepts.json`, bundle.concepts);
-write(`${generated}/experiments.json`, bundle.experiments);
-write(`${generated}/comparisons.json`, bundle.comparisons);
 write(`${generated}/site.json`, bundle.site);
 
 console.log(
   `\n${progress.summary.completedDays}/${progress.summary.totalDays} days complete ` +
-    `(${progress.summary.completionRate}%).`,
+    `(${progress.summary.completionRate}%). ` +
+    `translations: ${progress.summary.translation.synced} synced, ` +
+    `${progress.summary.translation.outdated} outdated, ` +
+    `${progress.summary.translation.missing} missing.`,
 );

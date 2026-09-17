@@ -1,119 +1,142 @@
+import { SOURCE_LANGUAGE, type Language } from "../../../scripts/lib/language";
 import type {
   ComparisonEntry,
   ConceptEntry,
   DayEntry,
   ExperimentEntry,
+  LanguageBundle,
   ProgressFile,
   SiteConfig,
 } from "../../../scripts/lib/types";
-import comparisonsJson from "../data/generated/comparisons.json";
-import conceptsJson from "../data/generated/concepts.json";
-import daysJson from "../data/generated/days.json";
-import experimentsJson from "../data/generated/experiments.json";
+import contentEn from "../data/generated/content.en.json";
+import contentZh from "../data/generated/content.zh.json";
 import progressJson from "../data/generated/progress.json";
 import siteJson from "../data/generated/site.json";
+import { useLanguage } from "./language";
 
 /**
  * The only place the front-end reads generated content.
- * Nothing here is hardcoded — add a Markdown file, run `npm run generate`,
- * and it shows up.
+ *
+ * Both language trees are complete: `docs/en/**` carries the canonical articles,
+ * `docs/zh/**` the Chinese review versions. Nothing here is hardcoded — add a
+ * Markdown file, run `npm run generate`, and it shows up.
  */
+export const content: Record<Language, LanguageBundle> = {
+  en: contentEn as unknown as LanguageBundle,
+  zh: contentZh as unknown as LanguageBundle,
+};
+
 export const site = siteJson as unknown as SiteConfig;
 export const progress = progressJson as unknown as ProgressFile;
-export const days = (daysJson as unknown as DayEntry[])
-  .slice()
-  .sort((a, b) => a.day - b.day);
-export const concepts = (conceptsJson as unknown as ConceptEntry[])
-  .slice()
-  .sort((a, b) => a.title.localeCompare(b.title));
-export const experiments = (experimentsJson as unknown as ExperimentEntry[])
-  .slice()
-  .sort((a, b) => a.number - b.number);
-export const comparisons = (comparisonsJson as unknown as ComparisonEntry[])
-  .slice()
-  .sort((a, b) => b.date.localeCompare(a.date));
-
 export const summary = progress.summary;
 
-export const phaseName = (id: string): string =>
-  progress.phases.find((phase) => phase.id === id)?.name ?? id;
+/**
+ * English is canonical, so the flat collections below read the English tree.
+ * Components that must follow the reader use `useDocs()`.
+ */
+export const days = content[SOURCE_LANGUAGE].days;
+export const concepts = content[SOURCE_LANGUAGE].concepts;
+export const experiments = content[SOURCE_LANGUAGE].experiments;
+export const comparisons = content[SOURCE_LANGUAGE].comparisons;
 
-export const conceptById = (id: string): ConceptEntry | undefined =>
-  concepts.find((concept) => concept.id === id);
-
-export const experimentById = (id: string): ExperimentEntry | undefined =>
-  experiments.find((experiment) => experiment.id === id);
-
-export const comparisonById = (id: string): ComparisonEntry | undefined =>
-  comparisons.find((comparison) => comparison.id === id);
-
-export function dayByNumber(raw: string | undefined): DayEntry | undefined {
-  if (raw === undefined) return undefined;
-  const parsed = Number.parseInt(raw, 10);
-  if (Number.isNaN(parsed)) return undefined;
-  return days.find((day) => day.day === parsed);
+export function docsFor(language: Language): LanguageBundle {
+  return content[language];
 }
 
-/** Days that reference a concept — the "learned on" trail of a knowledge node. */
-export function daysForConcept(id: string): DayEntry[] {
-  return days.filter((day) => day.concepts.includes(id));
+/** Content set for the language the current URL points at. */
+export function useDocs(): LanguageBundle {
+  const { language } = useLanguage();
+  return content[language];
 }
 
-export function experimentsForConcept(id: string): ExperimentEntry[] {
-  return experiments.filter((experiment) => experiment.concepts.includes(id));
+export function sourceLanguage(): Language {
+  return SOURCE_LANGUAGE;
 }
 
-export function comparisonsForConcept(id: string): ComparisonEntry[] {
-  return comparisons.filter((comparison) => comparison.concepts.includes(id));
+export function phaseName(id: string): string {
+  return progress.phases.find((phase) => phase.id === id)?.name ?? id;
 }
 
 /**
- * Does the document behind this route carry Chinese assistance? The reading
- * mode switch appears only where the answer is yes: an empty toggle is worse
- * than no toggle, because it promises text that is not there.
+ * Lookups.
+ *
+ * Every lookup names the language tree it reads, because the two trees are
+ * separate documents that merely share a stable id.
  */
-export function assistOnPath(pathname: string): boolean {
-  const param = (pattern: RegExp) => pathname.match(pattern)?.[1];
 
-  const day = param(/^\/learn\/day\/([^/]+)$/);
-  if (day !== undefined) return dayByNumber(day)?.assist !== undefined;
+export function conceptById(language: Language, id: string): ConceptEntry | undefined {
+  return content[language].concepts.find((concept) => concept.id === id);
+}
 
-  const concept = param(/^\/concepts\/([^/]+)$/);
-  if (concept !== undefined)
-    return conceptById(decodeURIComponent(concept))?.assist !== undefined;
+export function experimentById(
+  language: Language,
+  id: string,
+): ExperimentEntry | undefined {
+  return content[language].experiments.find((experiment) => experiment.id === id);
+}
 
-  const experiment = param(/^\/experiments\/([^/]+)$/);
-  if (experiment !== undefined)
-    return experimentById(decodeURIComponent(experiment))?.assist !== undefined;
+export function comparisonById(
+  language: Language,
+  id: string,
+): ComparisonEntry | undefined {
+  return content[language].comparisons.find((comparison) => comparison.id === id);
+}
 
-  const comparison = param(/^\/comparisons\/([^/]+)$/);
-  if (comparison !== undefined)
-    return comparisonById(decodeURIComponent(comparison))?.assist !== undefined;
+export function dayById(language: Language, id: string): DayEntry | undefined {
+  return content[language].days.find((day) => day.id === id);
+}
 
-  return false;
+export function dayByNumber(
+  language: Language,
+  raw: string | undefined,
+): DayEntry | undefined {
+  if (raw === undefined) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed)) return undefined;
+  return content[language].days.find((day) => day.day === parsed);
+}
+
+/** Days that reference a concept — the "learned on" trail of a knowledge node. */
+export function daysForConcept(language: Language, id: string): DayEntry[] {
+  return content[language].days.filter((day) => day.concepts.includes(id));
+}
+
+export function experimentsForConcept(language: Language, id: string): ExperimentEntry[] {
+  return content[language].experiments.filter((experiment) =>
+    experiment.concepts.includes(id),
+  );
+}
+
+export function comparisonsForConcept(language: Language, id: string): ComparisonEntry[] {
+  return content[language].comparisons.filter((comparison) =>
+    comparison.concepts.includes(id),
+  );
 }
 
 /** Newest completed first: what I actually worked on recently. */
-export function recentDays(count: number): DayEntry[] {
-  return days
+export function recentDays(language: Language, count: number): DayEntry[] {
+  return content[language].days
     .filter((day) => day.status !== "planned")
     .slice()
     .sort((a, b) => b.day - a.day)
     .slice(0, count);
 }
 
-export function currentFocus(): ConceptEntry | undefined {
+export function currentFocus(language: Language): ConceptEntry | undefined {
   const wanted = site.focus.concept;
+  const tree = content[language].concepts;
   return (
-    concepts.find((concept) => concept.id === wanted) ??
-    concepts.find((concept) => concept.status === "learning")
+    tree.find((concept) => concept.id === wanted) ??
+    tree.find((concept) => concept.status === "learning")
   );
 }
 
 /** Concept nodes grouped by the runtime layer they belong to. */
-export function conceptsByCategory(): { category: string; items: ConceptEntry[] }[] {
+export function conceptsByCategory(
+  language: Language,
+): { category: string; items: ConceptEntry[] }[] {
   const groups = new Map<string, ConceptEntry[]>();
-  for (const concept of concepts) {
+  for (const concept of content[language].concepts) {
     const list = groups.get(concept.category) ?? [];
     list.push(concept);
     groups.set(concept.category, list);
@@ -135,13 +158,4 @@ export function conceptsByCategory(): { category: string; items: ConceptEntry[] 
         a[0].localeCompare(b[0]),
     )
     .map(([category, items]) => ({ category, items }));
-}
-
-export function statsCard(): { label: string; value: string | number }[] {
-  return [
-    { label: "Days", value: summary.totalDays },
-    { label: "Completed", value: summary.completedDays },
-    { label: "Concepts", value: summary.conceptsTotal },
-    { label: "Experiments", value: summary.experimentsTotal },
-  ];
 }

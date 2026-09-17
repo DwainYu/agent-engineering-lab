@@ -1,0 +1,575 @@
+{
+  "language": "zh",
+  "days": [
+    {
+      "id": "day-01",
+      "language": "zh",
+      "revision": 0,
+      "sourceRevision": 1,
+      "kind": "day",
+      "slug": "day-01",
+      "path": "docs/zh/daily/day-01.md",
+      "day": 1,
+      "title": "Agent 到底是什么",
+      "date": "2026-09-10",
+      "status": "completed",
+      "phase": "fundamentals",
+      "topics": [
+        "agent",
+        "agent-loop",
+        "tool-calling"
+      ],
+      "concepts": [
+        "agent",
+        "agent-loop",
+        "tool-calling",
+        "llm-api"
+      ],
+      "experiments": [
+        "001-basic-llm",
+        "002-tool-calling",
+        "003-agent-loop",
+        "004-failure-modes",
+        "005-context-trim"
+      ],
+      "sources": [
+        "https://www.anthropic.com/engineering/building-effective-agents"
+      ],
+      "difficulty": "easy",
+      "estimatedTime": "3h",
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "productionProject": {
+        "repo": "tft-agent-set17",
+        "path": "api/agent/graph.py"
+      },
+      "body": "# Day 01 — Agent 到底是什么\n\n## 今日目标\n\n不用\"自主\"这个词，也能说清楚 Agent 是什么 —— 并且用一个\"模型发出工具调用、最\n终给出真实答案\"的完整轮次来证明它。\n\n## 今天学到了什么\n\n**Workflow** 和 **Agent** 的差别只有一件事：控制流在谁手上。\n\n```python\n# Workflow：步骤是我写的。\ndef summarize_topic(topic: str) -> str:\n    docs = retrieve(topic)          # 第 1 步\n    return complete(prompt(docs))   # 第 2 步\n\n# Agent：步骤由模型在运行时决定。\ndef agent(goal: str) -> str:\n    messages = [{\"role\": \"user\", \"content\": goal}]\n    while True:\n        reply = complete(messages, tools=TOOLS)\n        if not reply.tool_calls:\n            return reply.content\n        messages.append(as_message(reply))\n        messages.append(tool_results(reply.tool_calls))\n```\n\n那个 `while True` 就是全部核心。本仓库后面的每一个主题 —— state、context、\nmemory、session、evaluation —— 之所以存在，都是因为这个循环在特定、可预测的地\n方很脆弱。\n\n现在我能把三件事分开：\n\n1. **model** 只产出文本：一个回答，或者一次\"请帮我调用工具\"的请求。它自己不执行\n   任何东西。\n2. **runtime**（我的代码）执行工具、把结果追加进 transcript、决定是否进入下一轮。\n3. 两者之间的 **contract** 是 message list 加上 tool schemas。这份 contract 是模\n   型唯一\"看得见\"的东西。\n\nAnthropic 的说法和这个一致：agent \"通常只是循环里使用工具的 LLM\"，而且他们的建\n议是找最简单的方案 —— 只要任务的步骤能提前拆清楚，就应该优先用 Workflow 而不是\nAgent。\n\n## 源码分析\n\n`experiments/002-tool-calling/` 是这个循环最小、最可观察的版本。一轮，没有\n`while`。下面是脚本化 provider 的输出：\n\n```text\n 1. system     'You are an agent that finishes tasks step by step…'\n 2. user       'What is (17 + 28) * 4? Use the calculator tool…'\n 3. assistant  tool_calls=calculator({'expression': '(17 + 28) * 4'})   content=''\n 4. tool       '180'\n 5. assistant '(17 + 28) * 4 = 180.'\n```\n\n只有自己写过 client 才会注意到的两个 API contract 细节：\n\n- 工具调用是一种 **finish reason**，不是一种 message 类型。runtime 靠\n  `finish_reason: \"tool_calls\"` 才知道要继续，而不是停下来。\n- 工具调用那一轮的文本是空的。如果 runtime 假设一定有文本、并且用\"答案为空\"来\n  判断结束，那么工具还没执行，循环就先停了。\n\n## 仍然不理解的问题\n\n- 既然 message list 已经带上了全部信息，为什么还需要一个 **State** 对象。我的猜\n  测是：循环还需要做一些\"下一步跑哪个节点\"的决策，而这些不是对话。Day 03 应该\n  能回答。\n- 怎么终止一个一直在调工具的循环。我现在只有 `max_turns`，那是个刹车片，不是解决\n  方案。\n  _（当天晚些时候由 Experiment 004 回答：要夹住的是请求的形状，而不只是轮数 ——\n  对 `(tool, arguments)` 做重复检测，第三次相同的调用被拒绝，并把一条 observation\n  交回给模型。）_\n\n## 我向模型提出的问题\n\n### 问题\n\n> 如果 Workflow 也能做同样的事，那为什么还要有 Agent loop？\n\n### 我学到的\n\n因为 Workflow 需要\"步骤数量\"在写代码时就已经确定。只要某个任务的\"需要几步\"取决于\n中间结果说了什么（这份文档回答了问题吗？我要不要再查一次？），它就没法被写成一条固定\n的链 —— 这个分支必须从我的 `if` 挪进模型的输出里。\n\n这个交换是明码标价的：用控制权换灵活性。这就是为什么 evaluation、budget、tracing\n会出现在每一个生产级 Agent 设计里 —— 它们是拿来补回控制权的，不是装饰。\n\n## 实验\n\n原本计划是两个 notebook。实际发生的是：要跑这个计划，先得有个 runtime 可以跑，所以\n`tft-agent-set18` 也在今天被写了出来：五个模块（`messages`、`provider`、`tools`、\n`loop`、`context`、`trace`），五个实验，28 个 unittest 用例，只用标准库。\n\n- `experiments/001-basic-llm/` — 一次模型调用，没有工具\n- `experiments/002-tool-calling/` — 一次工具往返\n- `experiments/003-agent-loop/` — 四轮，状态穿过工具往下传\n- `experiments/004-failure-modes/` — 一次运行可能走坏的六种方式\n- `experiments/005-context-trim/` — 历史变长之后模型到底收到了什么\n\n代码：`tft-agent-set18/agent/` 和 `tft-agent-set18/experiments/`。\n\n进来之前没有、离开时带走的两个答案：\n\n- **终止一个卡住的循环**靠的不是 `max_turns`，而是对 `(tool, arguments)` 的重复检\n  测 —— 第三次相同的调用被拒绝，并返回一条 observation，这让模型有机会在预算之内\n  换个思路。\n- **Context 才是真正的预算。** 四轮的运行结束时共有九条消息，每一轮都会重发全部\n  消息；在 900 token 的上限下，runtime 把 40 条历史消息裁到 18 条，依然答对了 ——\n  因为它需要的那个事实存在工具里，不在 prompt 里。\n\n## 我的理解\n\nAgent 就是包在一个文本模型外面、允许它开口求救的 `while` 循环。模型永远不亲自做\n任何事，它只说它想让谁做什么。我作为工程师的活是：(a) 给它一小套诚实的工具，\n(b) 永远把结果写回 transcript，(c) 决定循环什么时候结束 —— 因为这件事模型自己\n判断不了。\n\n## 踩过的坑\n\n我一开始写工具 schema 时只写了 `name` 和 `description`，没有 `parameters`。于是模型\n自己编了参数的 key。schema 合法不是锦上添花，它就是接口本身。\n\n## 与 TFT Agent 的关联\n\n在 Set 17 里对应的位置是 `api/agent/graph.py`。今天再读它，我能精确指出哪几行是\n\"那个循环\"、哪几行只是 LangGraph 的脚手架 —— 以前在我眼里它就是一整块没差别的\n代码。\n\n## 复习要点\n\n- Workflow 的步骤写在代码里；Agent 的步骤由模型写。\n- 循环条件才是真正的产品决策。\n- 一次工具调用 = 文本 + 一个 finish reason；执行永远是我自己的事。\n- 简单才是目标：如果步骤已知，就不要造 Agent。\n- 每一种失败都必须以文本形式返回；抛异常会丢掉整次运行，返回 observation 才是可\n  恢复的。\n- 需要长期保存的状态放在工具里，因为迟早会被裁剪出 prompt。\n\n## 验证\n\n现在我能解释：\n\n- [x] 什么是 Agent Loop\n- [x] 为什么工具会造出一个循环\n- [x] 工具结果怎么回到模型\n- [x] 循环什么时候终止\n- [x] 卡住的循环是怎么被拒绝的（repeat guard，Experiment 004）\n- [x] 裁剪的代价是什么，什么能活下来（Experiment 005）\n- [ ] 为什么 State 要和 Message 分开（Day 03）\n\n## 下一步\n\nDay 02 — LLM API：streaming、usage，以及 client 的失败模式。那边的第一个动作：\n对真实端点跑一遍 `e01..e05 --real`，让 token 统计不再只是一个脚本里的数字。\n（2026-09-12 已对 ModelScope API-Inference 跑过；retry/backoff 那条路依然还没有\n真正遇到过 429。）",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/daily/day-01.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "day-02",
+      "language": "zh",
+      "revision": 0,
+      "sourceRevision": 1,
+      "kind": "day",
+      "slug": "day-02",
+      "path": "docs/zh/daily/day-02.md",
+      "day": 2,
+      "title": "LLM API、流式输出与用量统计",
+      "date": "2026-09-11",
+      "status": "learning",
+      "phase": "fundamentals",
+      "topics": [
+        "llm-api",
+        "streaming",
+        "tokens"
+      ],
+      "concepts": [
+        "llm-api",
+        "agent-loop"
+      ],
+      "experiments": [
+        "001-basic-llm"
+      ],
+      "sources": [],
+      "difficulty": "easy",
+      "estimatedTime": "2h",
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/provider.py"
+      },
+      "body": "# Day 02 — LLM API、流式输出与用量统计\n\n## 今日目标\n\n自己把 LLM client 写一遍：请求、响应、用量统计、流式 delta、429 重试 —— 让 Set 18\n里的 `agent/provider.py` 变成我读得懂的代码，而不是借来的代码。\n\n## 今天学到了什么\n\n脚本里的数字不能再当证据用，所以今天整套 runtime 都跑在真实端点上：ModelScope\nAPI-Inference（魔搭社区），模型 `Qwen/Qwen3.8-Flash-Next`，顶掉了原定的 DeepSeek\n计划。\n\n- 切换只动了一个文件。`agent/provider.py` 现在读 `MODELSCOPE_API_KEY` /\n  `MODELSCOPE_BASE_URL`，并通过 `extra_body` 传端点特有的开关\n  （`enable_thinking: false`、`max_tokens: 1024`）。loop、tools 和实验一行没改 ——\n  这就是把传输层挡在 `loop.py` 之外的回报。\n- 用量变成了真的，而且它主要是 schema 的账：同样的两条消息，不带 `tools` 是 37 个\n  prompt token，带四个工具定义是 501 个（`experiments/001-basic-llm/`）。工具定义比\n  对话更贵。\n- 在 `temperature: 0` 下，真实模型连续四次复现了 Experiment 002 的轨迹 —— 同样的\n  工具调用、同样的 1 205 token，只有措辞在变。这种可重复性才是\n  `ScriptedProvider` 能当诚实替身的原因。\n- Experiment 005 不再整齐。在同样被裁剪的 context 下，一次运行诚实地说它无法确认那\n  个数字，下一次则完全没收敛，以 `stop_reason: max-turns` 加一个空答案收场。裁剪不只\n  是掉了 token，它把模型赖以前提的那段推理依据删掉了；而预算的作用，是让这件事变得可\n  见，而不是无声发生。\n- 一个真实的可观测性漏洞：`calls` 挂在 `ScriptedProvider` 上，所以真实运行打印出\n  \"0 messages actually sent\"。记录\"到底发了什么\"这件事，属于 `Provider` 接口，不属于\n  某一个实现。\n- Experiment 004 故意保持脚本化。失败目录必须是可复现的；而真实模型会自己发明一些没\n  人写过的失败 —— 比如去探四个刚被裁剪掉的 note key。\n\nStreaming 依然没碰：`provider.py` 没有 SSE 路径，也还没遇到 429，所以 backoff 目前仍\n然是我读过、但没真正交手的代码。\n\n## 仍然不理解的问题\n\n- 一个被流式输出的工具调用，它的 `arguments` 分散在多个 SSE chunk 里到达时，怎么重新\n  拼回去。\n- 同一端点上另外两个模型（`deepseek-ai/DeepSeek-V4-Flash-0731`、\n  `meituan-longcat/LongCat-Flash-Lite`）对 `say OK` 返回 `content: null`，而 Qwen 老老实\n  实回答了。没有追 —— runtime 只需要一个会回答的模型，这个会。\n\n## 实验\n\n同样的五个脚本，加 `--real`，跑在 ModelScope 上：\n\n```bash\nexport MODELSCOPE_API_KEY=***                     # ModelScope SDK token\npython3 experiments/e01_single_turn.py --real\npython3 experiments/e02_tool_calling.py --real    # 跑四次，结果相同\npython3 experiments/e03_agent_loop.py --real\npython3 experiments/e05_context_trim.py --real     # 跑两次，两次不同\n```\n\n真实数字写进了 notebook，不覆盖脚本里的数字：\n\n- `experiments/001-basic-llm/` — 用量，以及 schema 成本测量\n- `experiments/002-tool-calling/` — 真实模型上的一次工具往返\n- `experiments/003-agent-loop/` — 脚本 8 个 token 对真实 2 698 个\n- `experiments/004-failure-modes/` — 为什么这个保持脚本化\n- `experiments/005-context-trim/` — 收敛不再有保证\n\n## 我的理解\n\n_待补充。_\n\n## 复习要点\n\n_待补充。_\n\n## 下一步\n\nDay 03 — Agent State：为什么只有 message list 还不够。",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/daily/day-02.md",
+          "sourceRevision": 1
+        }
+      }
+    }
+  ],
+  "concepts": [
+    {
+      "id": "agent-loop",
+      "language": "zh",
+      "revision": 0,
+      "sourceRevision": 1,
+      "kind": "concept",
+      "slug": "agent-loop",
+      "path": "docs/zh/concepts/agent-loop.md",
+      "title": "Agent Loop",
+      "category": "runtime",
+      "status": "learning",
+      "progress": 60,
+      "summary": "模型调用、工具执行、结果注入的重复循环，直到模型给出答案或预算把它拦下。",
+      "prerequisites": [
+        "agent",
+        "tool-calling",
+        "llm-api"
+      ],
+      "related": [
+        "agent-runtime"
+      ],
+      "experiments": [
+        "002-tool-calling"
+      ],
+      "days": [],
+      "tags": [],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "body": "# Agent Loop：Agent 执行循环\n\n## 定义\n\nAgent Loop 就是下面这条循环：\n\n```text\ntranscript → model → (tool_calls?) → execute → results → transcript → ...\n```\n\n它有两个出口：模型产出了最终答案，或者 runtime 拒绝继续（轮数 / token / 时间 / 成本\n预算）。\n\n## 为什么需要它\n\n模型没有状态，一次调用只出一次结果。所谓\"连续工作\"是调用方造出来的：每一轮都把更长的\ntranscript 重新发一遍。所以 Agent Loop 不是模型的能力，而是 runtime 外面套的那个循\n环 —— 是它把一个无状态函数变成了一个看起来有持续性的工人。\n\n## 最小实现\n\n循环本体只有五行，有意思的是退出判定。模型表达\"我做完了\"的方式是**不再请求工具**，\n而这个信号很弱，它同样可能意味着\"我卡住了，不知道下一步怎么办\"。所以一个结实的\nruntime 还要再加三层：\n\n- 硬性的 `max_turns`\n- 重复调用检测（同一个 tool，同一组 args）\n- transcript 自身的 token budget\n\n```python\nseen: Counter[tuple[str, str]] = Counter()\nfor _ in range(max_turns):\n    reply = llm.complete(messages, tools=tools)\n    if not reply.tool_calls:\n        return reply.content\n    key = (reply.tool_calls[0].name, reply.tool_calls[0].arguments)\n    if (seen[key] := seen[key] + 1) >= 3:\n        raise Stuck(key)\n    ...\n```\n\n## 补充理解\n\n最小例子（Experiment 004）：模型连着三次调用同一个 `now`，前两次正常返回，第三次被\nrepeat guard 拒掉并回一条 observation，运行结果是 `stop_reason: stuck-loop`，但整轮\n仍能收敛到 final-answer。\n\n常见误区：把 `max_turns` 当成防卡死机制。它区分不了\"卡住\"和\"只是步骤多\"，做这个区分\n的是重复检测。\n\n再强调一次循环的形状 —— 模型进行决策 → 调用工具 → 获取工具结果 → 更新状态 → 再一次\n调用模型，直到满足明确的终止条件。\n\n## 真实项目里\n\n- Training：`tft-agent-set18/agent/loop.py`\n- Production：`tft-agent-set17/api/agent/graph.py` — 循环变成了节点之间的条件边。\n\n## 常见问题\n\n- 以空 content 收尾，而且从不告诉用户为什么。\n- 把工具结果当成 `user` 消息注入，这等于在教模型模仿工具输出。\n- 没有可观测性，所以卡住的循环和正常的循环看起来一模一样。",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/concepts/agent-loop.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "agent-runtime",
+      "language": "zh",
+      "revision": 0,
+      "sourceRevision": 1,
+      "kind": "concept",
+      "slug": "agent-runtime",
+      "path": "docs/zh/concepts/agent-runtime.md",
+      "title": "Agent Runtime",
+      "category": "runtime",
+      "status": "planned",
+      "progress": 0,
+      "summary": "除了模型以外的一切：state、message history、event stream、预算，以及工具执行的调度。",
+      "prerequisites": [
+        "agent-loop"
+      ],
+      "related": [
+        "agent-loop"
+      ],
+      "experiments": [],
+      "days": [],
+      "tags": [],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/"
+      },
+      "body": "# Agent Runtime\n\n## 定义\n\n**Agent Runtime** 是模型外面那层宿主进程：它拥有 state、message transcript、事件发\n射、预算以及工具调度。\n\n## 为什么重要\n\n循环本身很简单；难的是把它跑很多次、跑在很多并发用户上，同时不丢状态、不重复状态。\n框架真正的价值在这里 —— 也正是我需要知道\"它们替我做了什么\"的地方。\n\n## 最小实现\n\n等 Day 03 / Day 04 填，那时候 `agent/state.py` 和 `agent/events.py` 才会存在。\n\n## 真实项目里\n\n- Training：`tft-agent-set18/agent/` — `loop.py` 管轮次，`trace.py` 管事件。\n- Production：`tft-agent-set17/api/agent/`\n\n## 常见问题\n\n_我预期会撞上的开放问题：_\n\n- 如果进程重启，transcript 存在哪里？\n- state 和 session 的区别是什么？\n- LangGraph 的哪些部分，替代了本该我自己写的代码？",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/concepts/agent-runtime.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "agent",
+      "language": "zh",
+      "revision": 0,
+      "sourceRevision": 1,
+      "kind": "concept",
+      "slug": "agent",
+      "path": "docs/zh/concepts/agent.md",
+      "title": "Agent",
+      "category": "fundamentals",
+      "status": "learning",
+      "progress": 45,
+      "summary": "一种程序：由模型在运行时决定下一步做什么，外面套一个负责执行的 runtime。",
+      "source": "https://www.anthropic.com/engineering/building-effective-agents",
+      "prerequisites": [],
+      "related": [
+        "agent-loop",
+        "tool-calling"
+      ],
+      "experiments": [
+        "001-basic-llm",
+        "002-tool-calling"
+      ],
+      "days": [],
+      "tags": [],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "productionProject": {
+        "repo": "tft-agent-set17",
+        "path": "api/agent/graph.py"
+      },
+      "body": "# Agent\n\n## 定义\n\n**Agent** 是这样一种程序：由 LLM 在运行时决定下一步是什么，外面套一层 runtime 去\n执行这个决定，并把结果喂回来。对照 **Workflow**：Workflow 的步骤顺序是写死在代码里\n的。\n\n## 为什么需要它\n\n有些任务没法提前拆解：需要几步、下一步是哪一步，取决于上一步的结果说了什么。把这种\n分支写成 `if` 语句是撑不住的，于是分支被搬进了模型的输出里，而 runtime 就退化成一个\n循环。\n\n这个交换的代价是控制权。生产环境里所有关于 Agent 的考量 —— evaluation、budget、\ntracing、guardrail —— 都是用来把控制权买回来的。\n\n## 最小实现\n\n```python\ndef agent(goal: str, tools: list[Tool], max_turns: int = 8) -> str:\n    messages = [{\"role\": \"user\", \"content\": goal}]\n    for _ in range(max_turns):\n        reply = llm.complete(messages, tools=tools)\n        if not reply.tool_calls:\n            return reply.content or \"\"\n        messages.append(reply.to_message())\n        messages.extend(tools.run(reply.tool_calls))\n    raise Budget(\"max_turns\")\n```\n\n五个部件，只有五个：transcript、tool schemas、executor、loop condition、budget。\n\n## 真实项目里\n\n- Training：`tft-agent-set18/agent/loop.py` — 就是上面这个最小循环。\n- Production：`tft-agent-set17/api/agent/graph.py` — 同样的循环，用 LangGraph 的\n  state graph 表达，外加路由、checkpoint 和 streaming。\n\n## 常见问题\n\n- 除了\"模型不回答了\"之外，没有别的终止条件。\n- 工具结果从不写回 transcript，于是模型重复同一个调用。\n- 工具太多：还没等能力涨上来，选择准确率先掉了。\n- 把 Agent 当锤子，两步就能做完的事也上循环。",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/concepts/agent.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "llm-api",
+      "language": "zh",
+      "revision": 0,
+      "sourceRevision": 1,
+      "kind": "concept",
+      "slug": "llm-api",
+      "path": "docs/zh/concepts/llm-api.md",
+      "title": "LLM API",
+      "category": "fundamentals",
+      "status": "learning",
+      "progress": 45,
+      "summary": "所有 Agent 底层的那一次模型调用：消息进、一条回复出，外加 usage、finish reason 和 tool calls。",
+      "prerequisites": [],
+      "related": [
+        "agent",
+        "tool-calling"
+      ],
+      "experiments": [
+        "001-basic-llm",
+        "002-tool-calling"
+      ],
+      "days": [],
+      "tags": [],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/provider.py"
+      },
+      "body": "# LLM API\n\n## 定义\n\n对 chat-completions 端点的一次调用：输入一组消息（外加 tool schemas、采样参数），输出\n一条 assistant 回复，并附带 `finish_reason` 和 `usage`。\n\n## 为什么重要\n\nAgent 做的所有事，都是把这个最底层的原语重复执行。如果单轮 contract 没搞懂 —— 什么\n是无状态的、message role 是什么意思、tool call 出现在哪里 —— 那上面那层循环就只是猜。\n\n## 最小实现\n\n```python\npayload = {\n    \"model\": MODEL,\n    \"messages\": [{\"role\": \"user\", \"content\": \"What is an Agent?\"}],\n    \"temperature\": 0,\n}\nrequest = urllib.request.Request(\n    f\"{BASE_URL}/chat/completions\",\n    data=json.dumps(payload).encode(),\n    headers={\n        \"content-type\": \"application/json\",\n        \"authorization\": f\"Bearer {api_key}\",\n    },\n)\ndata = json.loads(urllib.request.urlopen(request, timeout=60).read())\n```\n\n不能省的三样东西：超时、每轮的 `usage` 统计、以及 429 / 5xx 上带 backoff 的重试。\n\n## 实测数据\n\n2026-09-12 跑真实端点得到的数字，不是文档里抄的：\n\n| 测量项                                               | 数值                  |\n| ---------------------------------------------------- | --------------------- |\n| 同样两条消息，不带 `tools`                            | `prompt_tokens=37`     |\n| 同样两条消息，四个 tool schemas                       | `prompt_tokens=501`    |\n| 一次工具往返（Experiment 002，2 轮）                   | 1 205 tokens           |\n| 四轮循环（Experiment 003）                            | 2 698 tokens           |\n| `temperature: 0` 下重复 Experiment 002                 | 4 次，成本一致        |\n| 实际返回的 `usage` 字段                                | prompt / completion / total |\n\n对 runtime 写法有三个后果：\n\n- 一次 prompt 里最大的固定成本是 schemas，不是对话。提供四个工具，每一轮都要为它们付\n  钱；工具数量的预算就是 token 的预算。\n- `temperature: 0` 的可重复性，才让一个脚本能够代替模型。它在小任务上成立；在被裁剪\n  过的、含糊的任务上不成立（Experiment 005 两次给出了不同答案）。\n- 端点特有的旋钮属于 provider 的构造函数（`enable_thinking`、`max_tokens`），永远不属\n  于 loop。`content` 为空且 `tool_calls` 有值是正常的；`content` 为空且\n  `finish_reason: stop` 是模型什么都没回答，而只有 `usage` 加上 finish reason 才分\n  得清这两者。\n\n## 常见问题\n\n- 没有超时：一个挂死的请求看起来就像一个很慢的 Agent。\n- 忽略 `finish_reason: \"length\"`，把一个被截断的回答当成最终答案。\n- 交互式流量和批量流量共用同一个 client，于是延迟预算互相打架。",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/concepts/llm-api.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "tool-calling",
+      "language": "zh",
+      "revision": 0,
+      "sourceRevision": 1,
+      "kind": "concept",
+      "slug": "tool-calling",
+      "path": "docs/zh/concepts/tool-calling.md",
+      "title": "Tool Calling",
+      "category": "tools",
+      "status": "learning",
+      "progress": 35,
+      "summary": "模型发给 runtime 的结构化请求：名字加 JSON 参数，并按事先告知模型的 schema 校验。",
+      "prerequisites": [
+        "agent",
+        "llm-api"
+      ],
+      "related": [
+        "agent-loop"
+      ],
+      "experiments": [
+        "002-tool-calling"
+      ],
+      "days": [],
+      "tags": [],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/tools.py"
+      },
+      "productionProject": {
+        "repo": "tft-agent-set17",
+        "path": "api/agent/tools.py"
+      },
+      "body": "# Tool Calling\n\n## 定义\n\n一个 **tool** 是一份告知模型的 JSON schema。\"Tool calling\" 指的是模型不回散文，而是\n回 `{\"name\": ..., \"arguments\": \"...\"}`，并且用 `finish_reason: \"tool_calls\"` 把这条\n回复标记为\"还没完\"。\n\n## 为什么需要它\n\n文本输出影响不了现实世界。Tool calling 给了模型一条带副作用的通道，但没给它执行代码\n的权力 —— runtime 因此保留了校验、限制和记录每一次影响的权力。\n\n## 最小实现\n\n```python\n@dataclass\nclass Tool:\n    name: str\n    description: str\n    parameters: dict          # JSON Schema\n    fn: Callable[..., str]\n\n    def as_schema(self) -> dict:\n        return {\n            \"type\": \"function\",\n            \"function\": {\n                \"name\": self.name,\n                \"description\": self.description,\n                \"parameters\": self.parameters,\n            },\n        }\n```\n\n执行是一次普通的分派，而且结果必须作为一条 `tool` 消息、带着同一个 `tool_call_id`\n返回：\n\n```python\n{\"role\": \"tool\", \"tool_call_id\": call.id, \"content\": json.dumps(output)}\n```\n\n## 真实项目里\n\n- Training：`tft-agent-set18/agent/tools.py` — registry、参数校验和四个工具。\n- Production：`tft-agent-set17/api/agent/tools.py` — 同样的 contract，多了缓存和绑定\n  鉴权的工具。\n\n## 常见问题\n\n- 描述含糊：模型是靠读描述来选工具的，所以坏描述就是路由 bug。\n- 没先按 schema 校验参数就执行。\n- 把原始异常当工具输出返回 —— 模型会把它们当事实读，然后开始自由发挥。应该返回结构化\n  的错误。\n- 并行调用：两次写同一个资源，没有任何顺序保证。",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/concepts/tool-calling.md",
+          "sourceRevision": 1
+        }
+      }
+    }
+  ],
+  "experiments": [
+    {
+      "id": "001-basic-llm",
+      "kind": "experiment",
+      "slug": "001-basic-llm",
+      "path": "docs/zh/experiments/001-basic-llm.md",
+      "number": 1,
+      "title": "一次模型调用",
+      "status": "completed",
+      "stack": [
+        "python"
+      ],
+      "concepts": [
+        "llm-api",
+        "agent"
+      ],
+      "day": 1,
+      "summary": "不用框架、不用辅助库（只用标准库）打一次 chat-completions API，把返回的东西原样打印出来。",
+      "code": {
+        "path": "experiments/001-basic-llm",
+        "readme": "experiments/001-basic-llm/README.md"
+      },
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/provider.py"
+      },
+      "language": "zh",
+      "revision": 1,
+      "sourceRevision": 1,
+      "body": "# Experiment 001 — 一次模型调用\n\n## 目标\n\n不借助任何框架和辅助库、只用标准库，调用一次 chat-completions API，并把返回内容原样\n打印出来。\n\n## 架构\n\n```text\nprompt\n  ↓\nHTTP POST /chat/completions\n  ↓\nchoices[0].message        → text\nchoices[0].finish_reason  → \"stop\"\nusage                     → prompt / completion / total tokens\n```\n\n## 学到了什么\n\n- `usage` 是唯一的成本信号。如果 client 不记录它，Agent 就没有预算可言。\n- `finish_reason` 是答案的一部分，不是诊断信息。`stop` 和 `length` 对调用方来说完全是\n  两回事。\n- 一次模型调用是无状态的：所谓\"对话\"就是我每次都把 transcript 重发一遍。\n\n## 结果\n\n```text\n$ python3 experiments/e01_single_turn.py\nprovider      : scripted\ntools offered : 4 (calculator, now, note_get, note_put)\nmessages      : 2\nresponse      : role=assistant tool_calls=0 finish_reason=stop\nusage         : Usage(prompt_tokens=0, completion_tokens=12)\n```\n\n2026-09-12 跑在 ModelScope API-Inference（魔搭社区）上，模型\n`Qwen/Qwen3.8-Flash-Next`，`enable_thinking: false`，`max_tokens: 1024`：\n\n```text\n$ python3 experiments/e01_single_turn.py --real\nprovider      : Qwen/Qwen3.8-Flash-Next@https://api-inference.modelscope.cn/v1\ntools offered : 4 (calculator, note_get, note_put, now)\nmessages      : 2\nresponse      : role=assistant tool_calls=0 finish_reason=stop\ncontent       : An LLM agent is a language model that autonomously plans, uses\n                tools, and takes multi-step actions to achieve a goal.\nusage         : Usage(prompt_tokens=501, completion_tokens=26)\n```\n\n有两件事只有真实数字能告诉我：\n\n- **工具的 schema 本身就是 prompt。** 同样的两条消息、同一个端点，一次带 `tools`，\n  一次不带：\n\n  ```text\n  without tools : prompt_tokens=37\n  with 4 tools  : prompt_tokens=501      (+464，请求的 13.5 倍)\n  ```\n\n  四个手写 schema 的开销，比二十轮对话还大。\"context 不够用了\"在它变成一个历史问题\n  之前，首先是一个工具定义问题；修法是减少工具，而不是加大窗口。\n- `completion_tokens` 只是答案的长度，没有更多含义。在有东西决定\"累计用量跨过预算时该\n  怎么办\"之前，统计只是记账 —— 那个决定是 Day 05 的 `token_budget`。\n\n## 代码\n\n代码在训练项目里，不在这里：\n\n- `tft-agent-set18/agent/provider.py` — `ScriptedProvider`（确定性）和\n  `OpenAICompatProvider`（stdlib HTTP，429/5xx backoff，用量统计）\n- `tft-agent-set18/experiments/e01_single_turn.py` — 本次运行\n\n## 下一步\n\nExperiment 002：加一个工具，观察响应里有什么变化。",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/experiments/001-basic-llm.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "002-tool-calling",
+      "kind": "experiment",
+      "slug": "002-tool-calling",
+      "path": "docs/zh/experiments/002-tool-calling.md",
+      "number": 2,
+      "title": "一次工具调用，一次往返",
+      "status": "completed",
+      "stack": [
+        "python"
+      ],
+      "concepts": [
+        "tool-calling",
+        "agent-loop"
+      ],
+      "day": 1,
+      "summary": "让模型调用一个工具，执行它，再拿回一句自然语言答案 —— 只走一次往返，不用循环。",
+      "code": {
+        "path": "experiments/002-tool-calling",
+        "readme": "experiments/002-tool-calling/README.md"
+      },
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/tools.py"
+      },
+      "language": "zh",
+      "revision": 1,
+      "sourceRevision": 1,
+      "body": "# Experiment 002 — 一次工具调用，一次往返\n\n## 目标\n\n让模型调用一个工具、执行它，并拿回一句自然语言答案 —— 只走一次往返，没有循环。\n\n## 架构\n\n```text\nUser\n  ↓\nLLM (tools=[calculator, now, note_put, note_get])\n  ↓\ntool_call  calculator {\"expression\": \"(17 + 28) * 4\"}\n  ↓\nTool (validated args → python function)\n  ↓\ntool result (role=tool, tool_call_id=...)\n  ↓\nLLM\n  ↓\nAnswer\n```\n\n## 学到了什么\n\n- 工具调用以 `message.tool_calls[]` 的形式到达，`arguments` 仍然是一个**字符串**。解析\n  是我的活；解析失败只在\"我的 schema 描述没写清楚\"这个意义上算模型的错。\n- 那一轮的 `content` 是 `None`。任何用\"答案为空\"来结束对话的 runtime，都会在这里把\n  Agent 掐死。\n- `tool_call_id` 这个反向引用是强制的。一旦调用超过一个，没有它模型就分不清结果属于哪\n  一次调用。\n\n## 结果\n\n```text\n$ python3 experiments/e02_tool_calling.py\nanswer        : (17 + 28) * 4 = 180.\nstop reason   : final-answer\nobservations  : 1\n\n 1. system     'You are an agent that finishes tasks step by step…'\n 2. user       'What is (17 + 28) * 4? Use the calculator tool…'\n 3. assistant  tool_calls=calculator({'expression': '(17 + 28) * 4'})\n 4. tool       '180'\n 5. assistant '(17 + 28) * 4 = 180.'\n```\n\n2026-09-12 跑在 ModelScope API-Inference（魔搭社区）上，模型\n`Qwen/Qwen3.8-Flash-Next`，`enable_thinking: false`，`max_tokens: 1024`：\n\n```text\n$ python3 experiments/e02_tool_calling.py --real\nanswer        : (17 + 28) * 4 = 180\nstop reason   : final-answer\nturns / tools / tokens : 2 / 1 / 1205\nobservations  : 1\n```\n\n消息的形状和脚本化运行完全一致 —— 第 1 轮 `finish_reason: tool_calls` 且 `content`\n为空，然后一条 `tool` 消息，然后是答案。我跑了四次：`turns / tools / tokens` 每次都一模\n一样，同样的工具调用、同样的数字。唯一会漂的是措辞 —— 真实回答把我脚本里那个句号给\n丢了。\n\n由此有两件事。第一，在 `temperature: 0` 下这个端点的可重复性足够好，好到\n`ScriptedProvider` 里的脚本是个公平的替身，这也让其余实验可以保持确定性。第二，\n1 205 个 prompt token 换来了一次算术调用，因为每一轮都要重发 Experiment 001 里测出来\n的那份 schema。\n\n这次运行**没有**覆盖的是\"模型拒绝使用工具\"。它在这里一直都会调用，所以\"没有工具调用\n就意味着结束\"这个信号，我目前还只用脚本验证过。\n\n`calculator` 工具是一次 AST 遍历，不是 `eval()` —— 模型给的参数字符串是不可信输入，\n所以解析它同时也是一道安全边界。\n\n## 代码\n\n- `tft-agent-set18/agent/tools.py` — registry、必填 / 多余参数校验、`calculator`\n- `tft-agent-set18/agent/loop.py` — 循环内的一次往返\n- `tft-agent-set18/experiments/e02_tool_calling.py` — 本次运行\n\n## 下一步\n\nExperiment 003：把这个往返放进 `while` 循环，并加上预算。",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/experiments/002-tool-calling.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "003-agent-loop",
+      "kind": "experiment",
+      "slug": "003-agent-loop",
+      "path": "docs/zh/experiments/003-agent-loop.md",
+      "number": 3,
+      "title": "迷你 Agent Loop",
+      "status": "completed",
+      "stack": [
+        "python"
+      ],
+      "concepts": [
+        "agent-loop",
+        "tool-calling",
+        "agent-runtime"
+      ],
+      "day": 1,
+      "summary": "用手写的 while 循环（transcript、工具注册表、退出判定、预算）跑一个多步任务，先别碰 LangGraph。",
+      "code": {
+        "path": "experiments/003-agent-loop",
+        "readme": "experiments/003-agent-loop/README.md"
+      },
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "language": "zh",
+      "revision": 1,
+      "sourceRevision": 1,
+      "body": "# Experiment 003 — 迷你 Agent Loop\n\n## 目标\n\n用手写的 `while` 循环跑一个多步任务 —— transcript、工具注册表、退出判定、预算 —— 在\n碰 LangGraph 之前。\n\n## 架构\n\n```text\nmessages = [system, user]\nloop:\n  provider.complete(trim(messages, budget), registry.specs())\n    ├─ tool_calls → invoke each → append tool observations → next turn\n    └─ text only  → final answer, stop\nguards: max_turns · max_tool_calls · repeat_limit\n```\n\n## 学到了什么\n\n- 退出判定只有一行（`if not message.tool_calls`），而它是横在一个能用的 Agent 和一个\n  `while True` 之间的唯一东西。\n- Context 是**单调增长**的：这次四轮的运行结束时带了九条消息，而且每一轮都把全部消息\n  重发一遍。步数便宜，token 不便宜。\n- \"记忆\"当时是一个工具。`note_put` / `note_get` 是让第 4 轮能够依赖第 1 轮的最小的\n  东西。\n- 工具结果必须**按顺序**作为消息追加。只要有一次 observation 放错位置，下一次请求对\n  模型来说就失去意义了。\n\n## 结果\n\n```text\n$ python3 experiments/e03_agent_loop.py\nanswer        : The order total is 100.0.\nturns         : 4   tool_calls: 3   messages: 9   tokens: 0 (scripted)\nstop_reason   : final-answer\n 1. system    'You are an agent that finishes tasks step by step…'\n 2. user      'Compute 12.5 * 8, store the result under order_total…'\n 3. assistant tool_calls=calculator({'expression': '12.5 * 8'})\n 4. tool      '100.0'\n 5. assistant tool_calls=note_put({'key': 'order_total', 'value': '100.0'})\n 6. tool      'stored order_total'\n 7. assistant tool_calls=note_get({'key': 'order_total'})\n 8. tool      '100.0'\n 9. assistant 'The order total is 100.0.'\n```\n\n三个不同的工具、四次模型调用、没有框架、200 行的循环。\n\n### 在真实端点上\n\n2026-09-12 跑在 ModelScope API-Inference（魔搭社区）上，模型\n`Qwen/Qwen3.8-Flash-Next`，`enable_thinking: false`，`max_tokens: 1024`：\n\n```text\n$ python3 experiments/e03_agent_loop.py --real\nanswer        : The value is **100.0** — computed as 12.5 × 8, stored under the\n                key `order_total`, and confirmed by reading it back.\nturns         : 4\ntool calls    : 3\nmessages      : 9 (grows every turn)\ntokens        : 2698\nstop reason   : final-answer\n```\n\n这次运行的脚本版花 8 个 token；真实版在同样四轮上花 2 698 个。比值约 340×，而且几乎\n全部是重发的 context：历史加上 Experiment 001 里记录的那份 schema。正是这个数字，让\n`token_budget` 成为一级控制项，而不是一个安全开关。\n\n## 代码\n\n- `agent/loop.py` — `Agent.run`、`AgentConfig`、三道护栏\n- `agent/tools.py` — registry、校验、`note_put` / `note_get`\n- `experiments/e03_agent_loop.py` — 本脚本\n\n## 下一步\n\nExperiment 004：故意让它失败 —— 错误的参数、未知的工具、卡住的循环、耗尽的预算、崩\n溃的工具。",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/experiments/003-agent-loop.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "004-failure-modes",
+      "kind": "experiment",
+      "slug": "004-failure-modes",
+      "path": "docs/zh/experiments/004-failure-modes.md",
+      "number": 4,
+      "title": "故意制造失败模式",
+      "status": "completed",
+      "stack": [
+        "python"
+      ],
+      "concepts": [
+        "agent-loop",
+        "tool-calling",
+        "agent-runtime"
+      ],
+      "day": 1,
+      "summary": "用六种不同方式弄坏这个循环，确认每一种都以一个有名字的 stop reason 结束，而不是一个堆栈或一次无限运行。",
+      "code": {
+        "path": "experiments/004-failure-modes",
+        "readme": "experiments/004-failure-modes/README.md"
+      },
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "language": "zh",
+      "revision": 1,
+      "sourceRevision": 1,
+      "body": "# Experiment 004 — 故意制造失败模式\n\n## 目标\n\n用六种不同方式弄坏这个循环，确认每一种都以一个有名字的 stop reason 结束，而不是一个\n堆栈或者一次无限运行。\n\n## 架构\n\n```text\ncall → registry.invoke\n         ├─ ok        → observation\n         ├─ ToolError → \"ERROR: …\"   as observation\n         ├─ Exception → \"ERROR: … raised RuntimeError: …\"\n         └─ repeated  → \"REFUSED: identical call …\"\nrun  → stop_reason ∈ final-answer | tool-budget | max-turns\n                | provider-error | tool-error\n```\n\n## 学到了什么\n\n- 模型犯的错是**数据**。缺参数、编造工具名、依赖崩了，全都以文本形式回来，运行继续往\n  下走。唯一的设计问题是这些文本的信息量够不够让人恢复 —— \"Error\" 毫无价值，\n  `calculator: missing argument(s) expression` 就不一样。\n- 重复检测比轮数上限更重要。一个卡住的模型会把整个 `max_turns` 预算烧在相同的调用\n  上，然后照样返回一个\"看起来成功了\"的结果；拒绝第三次相同的调用，才是给它一次换\n  思路的机会。\n- 预算要两个，不是一个：轮数约束的是对话长度，工具调用次数约束的是**单轮之内**的影响\n  范围（一条 assistant 消息可以要六次调用）。\n- `fail_on_tool_error` 是一个产品决策，不是技术决策：严格模式对流水线是对的，对探索性\n  Agent 是错的。\n\n## 结果\n\n```text\n$ python3 experiments/e04_failure_modes.py\n1. invalid tool arguments      → ERROR: calculator: missing argument(s) expression\n                                  recovery: \"I need an expression to compute anything.\"\n2. a tool that does not exist  → ERROR: unknown tool: web_search\n                                  recovery: \"That tool is unavailable…\"\n3. same call repeated          → REFUSED: identical call to now already made 2 times\n4. no scripted turn left       → stop_reason: provider-error\n5. more calls than allowed     → stop_reason: tool-budget   (tool_calls ≤ 2)\n6. tool raises                 → ERROR: crash raised RuntimeError: database connection died\n\nstop reasons:\n  bad-arguments → final-answer    unknown-tool → final-answer\n  stuck-loop    → final-answer    provider-error → provider-error\n  tool-budget   → tool-budget     tool-crash   → final-answer\n```\n\n能恢复的那几个走到了 `final-answer`；两个结构性上限则带着原因停下了运行。这个区分就是\nruntime 存在的全部意义。\n\n### 为什么这个 notebook 保持脚本化\n\n这里每一个 case 都是用 `ScriptedProvider` 构造的，即使在 `--real` 下也是。失败目录必须\n可复现：如果注入的那一轮来自真实模型，那么这个 case 要么今天不发生，要么明天以另一种\n方式发生，而那个用来固定 stop reason 的测试就变成了噪声。真实端点贡献的是这些失败的\n*形状* —— key 缺失时的 `ProviderError`、三次带 backoff 重试之后的 HTTP 错误类、以及一轮\n只带 `tool_calls` 而 `content` 为空的响应。\n\n真实模型额外带来的是脚本编不出来的失败：去探并不存在的 key（Experiment 005 的真实运\n行），这个过程在 trace 里看起来完全合理，却在白白烧轮数。\n\n## 代码\n\n- `agent/loop.py` — `_dispatch`、`repeat_limit`、`max_tool_calls`\n- `agent/provider.py` — `ProviderError`、retry/backoff、脚本耗尽\n- `experiments/e04_failure_modes.py`\n\n## 下一步\n\nExperiment 005：让历史一直长下去，直到 runtime 必须决定忘记什么。",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/experiments/004-failure-modes.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "005-context-trim",
+      "kind": "experiment",
+      "slug": "005-context-trim",
+      "path": "docs/zh/experiments/005-context-trim.md",
+      "number": 5,
+      "title": "Context 预算与裁剪",
+      "status": "completed",
+      "stack": [
+        "python"
+      ],
+      "concepts": [
+        "agent-loop",
+        "agent-runtime"
+      ],
+      "day": 1,
+      "summary": "让对话一直长下去，直到 runtime 必须决定忘掉什么，然后看任务还能不能完成。",
+      "code": {
+        "path": "experiments/005-context-trim",
+        "readme": "experiments/005-context-trim/README.md"
+      },
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/context.py"
+      },
+      "language": "zh",
+      "revision": 1,
+      "sourceRevision": 1,
+      "body": "# Experiment 005 — Context 预算与裁剪\n\n## 目标\n\n让对话一直长下去，直到 runtime 必须决定忘掉什么，然后看任务还能不能完成。\n\n## 架构\n\n```text\nmessages (grows every turn)\n  ↓\nestimate_tokens()  ≈ chars / 4 + 4 per message\n  ↓\ntrim(budget)       keep system, drop oldest, always keep the current task\n  ↓\nprovider.complete(request)      ← the model never sees what was dropped\n```\n\n## 学到了什么\n\n- 裁剪对模型是不可见的。它只是拿到一份更短的 prompt，完全不知道有什么被删掉了 —— 而这\n  正是\"忘了指令\"这类 bug 的出生地。\n- system prompt 和当前任务是两件值得保护的东西；夹在中间的都可以商量。这个优先级是一个\n  策略决策，不是关于 transformer 的事实。\n- 只存在于 prompt 里的事实是临时的。`order_total` 之所以活下来了，是因为它存在工具里\n  （`note_get`），不是因为模型记住了它。\n- 字符数 ÷ 4 是个糟糕的 tokenizer，但它是个不错的预算信号。估算从不需要精确，只需要单\n  调且便宜 —— 因为它驱动的那个决定只是\"要不要砍掉一轮\"。\n\n## 结果\n\n```text\n$ python3 experiments/e05_context_trim.py\nhistory       : 40 messages\nfull estimate : 2165 tokens (budget 900)\ntrimmed       : 18 messages, 881 tokens\ntrim events   : 2 of 2 turns had to drop context\nrequest #1    : 17 messages actually sent\nanswer        : order_total is 100.0.\nstop reason   : final-answer\n```\n\n过去的二十轮被丢掉了，任务依然完成。同样的脚本把预算降到 40 token 时只保留 system\nprompt 加最后一轮 —— 运行仍然会回答，但此时\"记忆\"可证明地来自工具，而不是 context。\n\n### 在真实端点上：同样的运行跑两次，两次都不一样\n\n2026-09-12 跑在 ModelScope API-Inference（魔搭社区）上，模型\n`Qwen/Qwen3.8-Flash-Next`，`enable_thinking: false`，`max_tokens: 1024`：\n\n```text\n$ python3 experiments/e05_context_trim.py --real   # 运行 A\nanswer        : I can retrieve the stored figure, but I can't confirm it.\n                **What I found:** `order_total` = 100.0 …\nstop reason   : final-answer\nturns / tools / tokens : 4 / 6 / 5213\nturn  3 note_get subtotal  → ERROR: no note stored under 'subtotal'\nturn  3 note_get tax       → ERROR: no note stored under 'tax'\nturn  3 note_get shipping  → ERROR: no note stored under 'shipping'\nturn  3 note_get discount  → ERROR: no note stored under 'discount'\n\n$ python3 experiments/e05_context_trim.py --real   # 运行 B，同样的输入\nanswer        : (empty)\nstop reason   : max-turns\nturns / tools / tokens : 4 / 4 / 4730\n```\n\n运行 A 读到了存下来的值，然后去翻四个已经被裁剪出它视野的 key，最后诚实地回答它无法\n确认那个数字。运行 B 则完全没收敛：它一直在问，最后被轮数预算拦下，一个答案都没有。\n\n脚本化的版本教不会我这一点。它总会回答，因为它的下一轮是写好的。换成真实模型之后，\n裁剪 context 不只是丢了 token —— 它删掉了模型赖以前提的依据，而这次运行能不能扛过去，\n是模型那天的行为属性，不是我的代码属性。预算能把\"丢失的 context\"变成一个看得见的\nstop reason；但没有任何东西能把答案找回来。\n\n## 代码\n\n- `tft-agent-set18/agent/context.py` — `estimate_tokens`、`trim`\n- `tft-agent-set18/agent/loop.py` — 每轮应用裁剪、`context_trimmed` 事件\n- `tft-agent-set18/experiments/e05_context_trim.py`\n- `tft-agent-set18/tests/test_context_trace.py` — 极端压力下 system prompt 与当前任务仍\n  然存活\n\n## 下一步\n\n在真实端点上做 streaming 和 usage（Day 02），然后用一个\"摘要式裁剪\"取代\"删除式裁剪\"。",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/experiments/005-context-trim.md",
+          "sourceRevision": 1
+        }
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "id": "custom-agent-vs-langgraph",
+      "language": "zh",
+      "revision": 0,
+      "sourceRevision": 1,
+      "kind": "comparison",
+      "slug": "custom-agent-vs-langgraph",
+      "path": "docs/zh/comparisons/custom-agent-vs-langgraph.md",
+      "title": "手写 Agent Loop 与 LangGraph 的对比",
+      "date": "2026-09-10",
+      "status": "learning",
+      "category": "architecture",
+      "summary": "手写循环从什么时候开始不再比框架划算 —— 用两个都写一遍的方式测量。",
+      "concepts": [
+        "agent",
+        "agent-loop",
+        "tool-calling",
+        "agent-runtime"
+      ],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "productionProject": {
+        "repo": "tft-agent-set17",
+        "path": "api/agent/graph.py"
+      },
+      "body": "# 手写 Agent Loop 与 LangGraph 的对比\n\n_Day 01 开始。本页的规矩：只写我亲自复现过的结论，并且附上能证明它的代码。_\n\n## 问题是什么\n\nSet 17 已经在用 LangGraph。如果我在 Set 18 里从零重写一遍 Agent，最后得到的是更差的\n东西，还是\"为什么 LangGraph 长成那个样子\"的理解？\n\n## 没有框架时，一个循环要付什么\n\nDay 01 在 `tft-agent-set18` 里实测：循环本身 203 行，整个 runtime 683 行，不需要任何第\n三方包。一个正确的循环很小 —— transcript、tool schemas、executor、exit test、budget。\n复杂度根本不在循环里。它出现在循环必须活过下面这些情况的时候：\n\n- [ ] 进程重启，transcript 还得在 —— checkpoint\n- [ ] 运行中有人要审批一次工具调用 —— interrupt\n- [ ] 并行分支写同一个 state —— reducer\n- [ ] 把 token 和工具事件流式推给同一个客户端 —— event protocol\n- [~] 记录发生了什么 —— `trace.py` 每个事件写一行 JSON，所以坏掉的运行可以回放着\n      读；但重放（replay）还做不到\n- [ ] 不是线性链的路由 —— graph edge\n\n## 预测\n\n上面六条几乎正好对应 LangGraph 的主打特性（checkpointing、human-in-the-loop、\nreducers、streaming、tracing、conditional edges）。框架本身就是一张真实问题的清单，\n这也正是生产项目采用它的理由。\n\n我预期会永远手写下去的只有两样：循环本体，和工具 contract。它们很小，而理解它们正是\n目的本身。\n\n## 证据\n\n- `experiments/003-agent-loop/` — 四轮、三个工具、九条消息：循环\n- `experiments/004-failure-modes/` — 六种 stop reason：护栏\n- `experiments/005-context-trim/` — 40 条历史消息裁到 18 条：策略\n- `tft-agent-set18/docs/architecture.md` — 同一张表的代码侧版本\n\n## 结论\n\n_还没有 —— 等 Set 18 的循环达到 Set 17 那张图的特性清单时，本页才下判决。_",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/comparisons/custom-agent-vs-langgraph.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "learning-system",
+      "language": "zh",
+      "revision": 0,
+      "sourceRevision": 1,
+      "kind": "comparison",
+      "slug": "learning-system",
+      "path": "docs/zh/architecture/learning-system.md",
+      "title": "这套学习系统是怎么运作的",
+      "date": "2026-09-17",
+      "status": "completed",
+      "category": "architecture",
+      "summary": "仓库本身就是数据库。Markdown 是输入，生成的 JSON 是输出，React 只负责渲染。",
+      "concepts": [],
+      "body": "# 这套学习系统是怎么运作的\n\n## 规则\n\n只有唯一一个 source of truth：**这个仓库里的 Markdown**。`data/progress.json` 以及网站\n渲染出来的一切都是 _派生的_。如果网站上的某个数字看着不对，要改的是一个 Markdown 文\n件，永远不是生成器。\n\n## 流水线\n\n```text\ndocs/en/daily/*.md        ┐\ndocs/en/concepts/*.md     │\ndocs/zh/daily/*.md        │   frontmatter (YAML)\ndocs/zh/concepts/*.md     ├─▶ body (Markdown)\ndocs/{en,zh}/questions/   │\nexperiments/*/README.md   │\ndata/site.json            ┘\n        ↓\nscripts/lib/load.ts        遍历 + 解析 → 带类型的条目 + issues\nscripts/lib/validate.ts    跨文档规则\nscripts/lib/translation.ts 语言匹配 → synced / outdated / missing\nscripts/lib/progress.ts    聚合\n        ↓\ndata/progress.json         提交进 git，人可读\nweb/src/data/generated/    构建产物\n        ↓\nReact (Vite)               只渲染，不计算\n```\n\n`npm run build` 先重新生成派生数据（`prebuild` → `npm run generate`），所以一个刚\nclone 下来的仓库即使 git 里没有陈旧的 JSON，也能构建出完整站点。\n\n## 三个项目，三份职责\n\n```text\nagent-engineering-lab → tft-agent-set18 → tft-agent-set17\n      解释                证明              交付\n```\n\n- **Lab**（本仓库）负责记录并展示学习过程。它的 `experiments/*/README.md` 里放的是\n  _描述、代码片段和结果_ —— 实验代码本身不会被复制到这里。\n- **Set 18** 是训练场：最小的、手写的实现，实验可以在没有 API key 的情况下用\n  `--mock` 模式跑。\n- **Set 17** 是产品。只有在 Set 18 里被证明过的想法才能进入这里。\n\nFrontmatter 承载了这条线索：每个 Day、Concept 和 Experiment 都可以设置\n`training_project` 与 `production_project`，各带 `repo` 和 `path`，网站把两者都渲染成\n链接。\n\n## 为什么浏览器从不解析 Markdown\n\n两个理由，都很实际：\n\n1. 扫描文件需要文件系统；GitHub Pages 的打包产物里没有。\n2. 在 Node 里生成，意味着校验发生在站点构建 _之前_。缺一个 `phase` 字段会让 CI 挂\n   掉，而不是渲染出一张空卡片。\n\n## 添加内容\n\n| 我想…                   | 我改…                                    | React 代码 |\n| ----------------------- | ---------------------------------------- | ---------- |\n| 新增一个学习日          | `docs/en/daily/day-04.md`                | 无         |\n| 新增它的中文版          | `docs/zh/daily/day-04.md`                | 无         |\n| 新增一个 concept        | `docs/en/concepts/context-engineering.md`| 无         |\n| 记录一个 experiment     | `experiments/004-state/README.md`        | 无         |\n| 新增一篇架构文档        | `docs/en/architecture/<name>.md`         | 无         |\n| 写一篇对比              | `docs/en/comparisons/<slug>.md`          | 无         |\n| 提一个问题              | `docs/en/questions/open.md` → `resolved.md` | 无      |\n\n## 双语文档\n\n英文和中文各自拥有完整的 Markdown 文档树：\n\n```text\ndocs/en/     canonical 技术事实来源\ndocs/zh/     完整的中文学习 / 复习版本\n```\n\n中文**不是**逐句机器翻译，也不是夹在英文段落下面的辅助卡片。它是独立的、可以拿来复\n习的完整中文文档 —— 允许为了学习目的重组句子，但技术事实、API 名、类名、函数名、文件\n名、代码和实验结果一律不动。\n\n对应关系靠 **stable id**，不靠文件名：\n\n```yaml\n# docs/en/concepts/agent-loop.md\nid: agent-loop\nlanguage: en\nrevision: 1\n```\n\n```yaml\n# docs/zh/concepts/agent-loop.md\nid: agent-loop\nlanguage: zh\nsource_revision: 1\n```\n\nContent Engine 比较两个数字，得出翻译状态：\n\n| 比较                                        | 状态      |\n| ------------------------------------------- | --------- |\n| `source_revision == revision`               | `synced`  |\n| `source_revision != revision`               | `outdated`|\n| 英文存在，中文不存在                        | `missing` |\n\n状态写在 `web/src/data/generated/sync.json`，并在 Progress 页面显示\n`English Days` / `Chinese Days` / `Translation Sync` 三行。\n\n> `assist:` frontmatter 和 `> **中文理解**` blockquote 是上一代的方案，已经全部迁移\n> 到 `docs/zh/`，并且不再被任何代码读取。\n\n## 路由与语言切换\n\n```text\n/en/learn/day/1     /zh/learn/day/1\n/en/concepts/...    /zh/concepts/...\n```\n\nHeader 上的 `EN | 中文` 会**跳转**到同一种语言路径、同一个文档 id 的页面，而不是只\n改一个 UI state。URL 是最终的 source of truth，`localStorage` 只记住偏好（key\n`agent-lab-language`，默认 `en`）。没有语言前缀的旧链接（`/learn/day/1`）会跳转到\n`/en/learn/day/1`，不会 404。\n\n## 术语表\n\n`docs/glossary.yml` 定义了受保护的技术术语和它们的中文说法。英文术语保持英文，首次\n出现可以加中文注释（`Context Engineering（上下文工程）`），之后不再翻译。\n\n## 补全中文文档\n\n用项目里的 skill：\n\n```text\n/skill:bilingual-learning        # 常规笔记：中文更紧凑，但仍是完整文档\n/skill:bilingual-learning deep   # 复杂概念：更充分的解释、更多例子、补充理解\n/skill:bilingual-learning review # 只读检查中英是否漂移\n```",
+      "translation": {
+        "en": {
+          "status": "synced",
+          "path": "docs/zh/architecture/learning-system.md",
+          "sourceRevision": 1
+        }
+      }
+    }
+  ],
+  "questions": {
+    "asked": 3,
+    "resolved": 1,
+    "open": 2,
+    "items": [
+      {
+        "slug": "Q001",
+        "status": "learning",
+        "question": "为什么 Agent 需要一个 State 对象？message transcript 明明已经包含了模型能看到 的全部东西。",
+        "concept": "agent-runtime",
+        "path": "docs/zh/questions/open.md"
+      },
+      {
+        "slug": "Q002",
+        "status": "learning",
+        "question": "当一个被流式输出的工具调用的 `arguments` 分散在多个 SSE chunk 里到达时，谁来把它 们拼回去？如果其中一个 chunk 丢了会怎样？",
+        "concept": "llm-api",
+        "path": "docs/zh/questions/open.md"
+      },
+      {
+        "slug": "Q001",
+        "status": "completed",
+        "question": "为什么 Workflow 不需要循环，而 Agent 一定需要？",
+        "explanation": "Workflow 的步骤数量在我写代码时就已经知道了，所以控制流可以放在我的 `for` / `if` 里。Agent 的步骤数量取决于中间结果说了什么，所以这个分支必须搬进 模型的输出里 —— 而模型之外必须有东西负责一直走下去，直到模型不再开口要东西。 改变的是什么：我不再试图通过措辞去\"让模型决定\"，而是开始把退出判定当成一段我自己 拥有的 runtime 代码。",
+        "concept": "agent",
+        "path": "docs/zh/questions/resolved.md"
+      }
+    ]
+  }
+}

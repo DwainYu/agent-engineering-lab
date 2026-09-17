@@ -1,3 +1,5 @@
+import type { Language } from "./language.js";
+
 // Shared data contracts for the content engine.
 // Everything here describes data that is GENERATED from Markdown frontmatter,
 // never hand-written by the React app.
@@ -23,17 +25,37 @@ export interface ProjectRef {
   repo: string;
   path?: string;
 }
-/**
- * Optional Chinese reading assistance for an English-first document.
- * Absent means the document has no assistance at all; it never means
- * "translate on demand".
- */
-export type AssistMode = "brief" | "deep";
-export const ASSIST_MODES: AssistMode[] = ["brief", "deep"];
+/******************************************************************************
+ * Bilingual document contract
+ ******************************************************************************/
 
-export interface AssistConfig {
-  language: "zh";
-  mode: AssistMode;
+export type TranslationStatus = "synced" | "outdated" | "missing";
+
+/** How one language tree relates to another for the same stable `id`. */
+export interface TranslationRef {
+  status: TranslationStatus;
+  /** path of the translated document; absent when the translation is missing */
+  path?: string;
+  /** `source_revision` declared by the translation */
+  sourceRevision?: number;
+}
+
+export type TranslationMap = Partial<Record<Language, TranslationRef>>;
+
+/**
+ * Identity shared by the English source and its translations. `revision` is
+ * the canonical counter English owns; `sourceRevision` is the value a
+ * translation was produced from.
+ */
+export interface DocIdentity {
+  id: string;
+  language: Language;
+  /** canonical revision — always present, `0` when the file omits it */
+  revision: number;
+  /** revision this document was translated from — translations only */
+  sourceRevision?: number;
+  /** state of every other language tree, keyed by language */
+  translation: TranslationMap;
 }
 
 export interface ParsedDoc {
@@ -45,7 +67,29 @@ export interface ParsedDoc {
   parseError?: string;
 }
 
-export interface DayEntry {
+/** One row of `web/src/data/generated/sync.json` — always the English side. */
+export interface SyncDocument {
+  id: string;
+  kind: DocKind;
+  language: Language;
+  revision: number;
+  path: string;
+  translation: TranslationMap;
+}
+
+export type DocKind = "day" | "concept" | "experiment" | "comparison";
+
+/** Everything the website renders for one language. */
+export interface LanguageBundle {
+  language: Language;
+  days: DayEntry[];
+  concepts: ConceptEntry[];
+  experiments: ExperimentEntry[];
+  comparisons: ComparisonEntry[];
+  questions: QuestionIndex;
+}
+
+export interface DayEntry extends DocIdentity {
   kind: "day";
   slug: string;
   path: string;
@@ -62,12 +106,11 @@ export interface DayEntry {
   estimatedTime?: string;
   trainingProject?: ProjectRef;
   productionProject?: ProjectRef;
-  assist?: AssistConfig;
 
   body: string;
 }
 
-export interface ConceptEntry {
+export interface ConceptEntry extends DocIdentity {
   kind: "concept";
   slug: string;
   path: string;
@@ -85,12 +128,11 @@ export interface ConceptEntry {
   tags: string[];
   trainingProject?: ProjectRef;
   productionProject?: ProjectRef;
-  assist?: AssistConfig;
 
   body: string;
 }
 
-export interface ExperimentEntry {
+export interface ExperimentEntry extends DocIdentity {
   kind: "experiment";
   slug: string;
   path: string;
@@ -98,19 +140,21 @@ export interface ExperimentEntry {
   number: number;
   title: string;
   status: Status;
-  language: string[];
+  /** implementation languages of the experiment code — never translated */
+  stack: string[];
+  /** where the runnable code lives; there is exactly one copy of it */
+  code: { path: string; readme: string };
   concepts: string[];
   day?: number;
   url?: string;
   summary?: string;
   trainingProject?: ProjectRef;
   productionProject?: ProjectRef;
-  assist?: AssistConfig;
 
   body: string;
 }
 
-export interface ComparisonEntry {
+export interface ComparisonEntry extends DocIdentity {
   kind: "comparison";
   slug: string;
   path: string;
@@ -123,7 +167,6 @@ export interface ComparisonEntry {
   concepts: string[];
   trainingProject?: ProjectRef;
   productionProject?: ProjectRef;
-  assist?: AssistConfig;
 
   body: string;
 }
@@ -182,15 +225,42 @@ export interface ProgressSummary {
   questionsResolved: number;
   questionsOpen: number;
   projects: ProjectStats[];
+
+  /** one block per language tree — the bilingual half of the report */
+  languages: Record<Language, LanguageProgress>;
+  /** how many English documents have a matching, up-to-date translation */
+  translation: TranslationCounts;
+}
+
+export interface LanguageProgress {
+  completedDays: number;
+  totalDays: number;
+  conceptsCompleted: number;
+  conceptsTotal: number;
+  experimentsCompleted: number;
+  experimentsTotal: number;
+  comparisons: number;
+  questions: number;
+}
+
+export interface TranslationCounts {
+  synced: number;
+  outdated: number;
+  missing: number;
+  total: number;
 }
 
 export interface ProgressDayItem {
+  id: string;
   day: number;
+  /** canonical English record */
+  english: { path: string; revision: number };
+  /** Chinese record, absent when the day has no Chinese document yet */
+  chinese?: { path: string; sourceRevision?: number; status: TranslationStatus };
   title: string;
   status: Status;
   phase: Phase;
   date: string;
-  path: string;
 }
 
 export interface QuestionItem {
@@ -222,6 +292,22 @@ export interface ProgressFile {
   phases: PhaseProgress[];
   days: ProgressDayItem[];
   questions: QuestionIndex;
+}
+
+/** docs/glossary.yml — terminology contract read by the bilingual skill. */
+export interface GlossaryTerm {
+  /** spelling kept in English in both language trees */
+  preferred: string;
+  /** how the term may be glossed in Chinese */
+  zh: string;
+}
+
+export interface GlossaryFile {
+  terms: Record<string, GlossaryTerm>;
+  /** UI label for a `status:` value, per language */
+  statuses: Record<string, Record<Language, string>>;
+  /** UI label for a translation sync state, per language */
+  translation: Record<string, Record<Language, string>>;
 }
 
 export interface SiteConfig {

@@ -7,22 +7,25 @@ import {
   extractFrontmatter,
   type RawDoc,
 } from "./frontmatter.js";
+import { DEFAULT_LANGUAGE, SOURCE_LANGUAGE, asLanguage, type Language } from "./language.js";
 import type {
-  AssistConfig,
-  AssistMode,
   ComparisonEntry,
   ConceptEntry,
   DayEntry,
-  ExperimentEntry,
   ParsedDoc,
+  ProjectRef,
   Status,
 } from "./types.js";
-import { ASSIST_MODES, STATUSES } from "./types.js";
+import { STATUSES } from "./types.js";
 
 export interface Issue {
   level: "error" | "warning";
   file: string;
   message: string;
+}
+
+export function dirNameOf(path: string): string {
+  return path.split("/").slice(0, -1).join("/");
 }
 
 export function slugFromPath(path: string): string {
@@ -39,7 +42,7 @@ export function parseSource(path: string, source: string): ParsedDoc {
 
 /**
  * Shared gate for every document kind: a frontmatter block that is absent or
- * unreadable is reported as itself, never as "missing field: title".
+ * unreadable is reported as itself, never as "missing field: id".
  */
 function requireFrontmatter(doc: ParsedDoc, issues: Issue[], kind: string): boolean {
   if (doc.parseError) {
@@ -50,7 +53,7 @@ function requireFrontmatter(doc: ParsedDoc, issues: Issue[], kind: string): bool
     });
     return false;
   }
-  if (!hasFrontmatter(doc)) {
+  if (Object.keys(doc.data).length === 0) {
     issues.push({
       level: "error",
       file: doc.path,
@@ -59,10 +62,6 @@ function requireFrontmatter(doc: ParsedDoc, issues: Issue[], kind: string): bool
     return false;
   }
   return true;
-}
-
-function hasFrontmatter(doc: ParsedDoc): boolean {
-  return Object.keys(doc.data).length > 0;
 }
 
 function asStatus(value: unknown): Status | undefined {
@@ -76,7 +75,7 @@ function asStringArrayField(value: unknown): string[] {
     const out: string[] = [];
     for (const item of value) {
       if (typeof item === "object" && item !== null && !Array.isArray(item)) {
-        const record = item as Record<string, unknown>;
+      const record = item as Record<string, unknown>;
         const nested =
           asString(record.url) ?? asString(record.link) ?? asString(record.href);
         if (nested) out.push(nested);
@@ -90,66 +89,134 @@ function asStringArrayField(value: unknown): string[] {
   return asStringArray(value);
 }
 
+/* ------------------------------------------------------------------ *
+ * Bilingual identity
+ *
+ * `id` is the stable key that pairs `docs/en/...` with `docs/zh/...`.
+ * `language` is declared in the file AND validated against the tree it
+ * lives in, so a document can never silently claim the wrong language.
+ * ------------------------------------------------------------------ */
+
+export interface DocIdentityDraft {
+  id: string;
+  language: Language;
+  /** canonical revision; defaults to 0 when the file omits it */
+  revision: number;
+  /** revision this document was translated from; translations only */
+  sourceRevision?: number;
+}
+
+interface RevisionRead {
+  value?: number;
+  valid: boolean;
+}
+
 /**
- * `assist: { language: zh, mode: brief | deep }` is optional on every document
- * kind. A malformed block is reported against the field instead of being
- * dropped: a note that believes it has Chinese assistance but does not is the
- * one failure this feature cannot have.
+ * `revision` and `source_revision` are optional counters. An absent one reads
+ * as `0`; a present-but-broken one is an error, because a counter nobody can
+ * compare is worse than no counter at all.
  */
-function parseAssist(
+function readRevision(
   data: Record<string, unknown>,
+  key: string,
   path: string,
   issues: Issue[],
-): AssistConfig | undefined {
-  const raw = data.assist;
-  if (raw === undefined || raw === null) return undefined;
-  if (typeof raw !== "object" || Array.isArray(raw)) {
+): RevisionRead {
+  const raw = data[key];
+  if (raw === undefined || raw === null) return { valid: true };
+  const num = asNumber(raw);
+  if (num === undefined || !Number.isInteger(num) || num < 0) {
     issues.push({
       level: "error",
       file: path,
-      message: 'assist must be a mapping with "language" and "mode"',
+      message: `Field ${key} must be a non-negative integer, got ${JSON.stringify(raw)}`,
     });
-    return undefined;
+    return { valid: false };
+  }
+  return { valid: true, value: num };
+}
+
+/**
+ * @param expected language implied by the directory the file sits in
+ *   (`docs/en/...` → `en`). Undefined for documents outside the language
+ *   trees, such as `experiments/*\/README.md`.
+ */
+export function parseDocIdentity(
+  data: Record<string, unknown>,
+  path: string,
+  issues: Issue[],
+  expected?: Language,
+): DocIdentityDraft | null {
+  let ok = true;
+
+  const id = asString(data.id);
+  if (id === undefined) {
+    issues.push({ level: "error", file: path, message: "Missing field: id" });
+    ok = false;
   }
 
-  const record = raw as Record<string, unknown>;
-  const language = asString(record.language);
+  const rawLanguage = data.language;
+  const language = asLanguage(rawLanguage);
   if (language === undefined) {
     issues.push({
       level: "error",
       file: path,
-      message: 'Missing field: assist.language (expected "zh")',
+      message:
+        rawLanguage === undefined
+          ? 'Missing field: language (expected "en" | "zh")'
+          : `Invalid language: ${JSON.stringify(rawLanguage)} (expected "en" | "zh")`,
     });
-  } else if (language !== "zh") {
+    ok = false;
+  } else if (expected !== undefined && language !== expected) {
     issues.push({
       level: "error",
       file: path,
-      message: `assist.language must be "zh", got ${language}`,
+      message: `language: ${language} does not match the directory it lives in (expected ${expected})`,
     });
+    ok = false;
   }
 
-  const mode = asString(record.mode)?.toLowerCase();
-  const valid = mode !== undefined && ASSIST_MODES.includes(mode as AssistMode);
-  if (mode === undefined) {
+  const revision = readRevision(data, "revision", path, issues);
+  const sourceRevision = readRevision(data, "source_revision", path, issues);
+  if (!revision.valid || !sourceRevision.valid) ok = false;
+
+  if (
+    sourceRevision.value !== undefined &&
+    (language ?? SOURCE_LANGUAGE) === SOURCE_LANGUAGE
+  ) {
     issues.push({
-      level: "error",
+      level: "warning",
       file: path,
-      message: `Missing field: assist.mode (expected ${ASSIST_MODES.join(" | ")})`,
-    });
-  } else if (!valid) {
-    issues.push({
-      level: "error",
-      file: path,
-      message: `assist.mode must be ${ASSIST_MODES.join(" | ")}, got ${mode}`,
+      message: "source_revision is ignored on a canonical English document",
     });
   }
+  if (
+    sourceRevision.value === undefined &&
+    (language ?? SOURCE_LANGUAGE) !== SOURCE_LANGUAGE
+  ) {
+    issues.push({
+      level: "error",
+      file: path,
+      message:
+        "Missing field: source_revision (the English revision this was translated from)",
+    });
+    ok = false;
+  }
 
-  return language === "zh" && valid
-    ? { language: "zh", mode: mode as AssistMode }
-    : undefined;
+  if (!ok || id === undefined || language === undefined) return null;
+  return {
+    id,
+    language,
+    revision: revision.value ?? 0,
+    ...(sourceRevision.value === undefined ? {} : { sourceRevision: sourceRevision.value }),
+  };
 }
 
-export function toDayEntry(doc: ParsedDoc, issues: Issue[]): DayEntry | null {
+export function toDayEntry(
+  doc: ParsedDoc,
+  issues: Issue[],
+  expected?: Language,
+): Omit<DayEntry, "translation"> | null {
   if (!requireFrontmatter(doc, issues, "Day")) return null;
   const slug = slugFromPath(doc.path);
   const day = asNumber(doc.data.day);
@@ -181,8 +248,12 @@ export function toDayEntry(doc: ParsedDoc, issues: Issue[]): DayEntry | null {
     issues.push({ level: "error", file: doc.path, message: "Missing field: phase" });
   }
 
+  const identity = parseDocIdentity(doc.data, doc.path, issues, expected);
+  if (!identity) return null;
+
   const experimentIds = asStringArrayField(doc.data.experiment);
   return {
+    ...identity,
     kind: "day",
     slug,
     path: doc.path,
@@ -201,13 +272,16 @@ export function toDayEntry(doc: ParsedDoc, issues: Issue[]): DayEntry | null {
     productionProject: asProjectRef(
       doc.data.production_project ?? doc.data.productionProject,
     ),
-    assist: parseAssist(doc.data, doc.path, issues),
 
     body: doc.body,
   };
 }
 
-export function toConceptEntry(doc: ParsedDoc, issues: Issue[]): ConceptEntry | null {
+export function toConceptEntry(
+  doc: ParsedDoc,
+  issues: Issue[],
+  expected?: Language,
+): Omit<ConceptEntry, "translation"> | null {
   if (!requireFrontmatter(doc, issues, "Concept")) return null;
   const slug = slugFromPath(doc.path);
   const id = asString(doc.data.id) ?? slug;
@@ -237,11 +311,15 @@ export function toConceptEntry(doc: ParsedDoc, issues: Issue[]): ConceptEntry | 
       message: `Field progress must be 0..100, got ${progress}`,
     });
   }
+  const identity = parseDocIdentity(doc.data, doc.path, issues, expected);
+  if (!identity) return null;
+
   return {
+    ...identity,
+    id,
     kind: "concept",
     slug,
     path: doc.path,
-    id,
     title: title ?? id,
     category: category ?? "general",
     status: status ?? "planned",
@@ -260,16 +338,40 @@ export function toConceptEntry(doc: ParsedDoc, issues: Issue[]): ConceptEntry | 
     productionProject: asProjectRef(
       doc.data.production_project ?? doc.data.productionProject,
     ),
-    assist: parseAssist(doc.data, doc.path, issues),
 
     body: doc.body,
   };
 }
 
-export function toExperimentEntry(
+/**
+ * The runnable experiment lives in exactly one place — `experiments/<id>/` —
+ * and its README is the canonical English lab notebook. A Chinese review
+ * version may be layered on top from `docs/zh/experiments/<id>.md`; it never
+ * duplicates the code.
+ */
+export interface ExperimentSourceDraft {
+  slug: string;
+  id: string;
+  number: number;
+  title: string;
+  status: Status;
+  stack: string[];
+  concepts: string[];
+  day?: number;
+  url?: string;
+  summary?: string;
+  trainingProject?: ProjectRef;
+  productionProject?: ProjectRef;
+  code: { path: string; readme: string };
+  revision: number;
+  body: string;
+  path: string;
+}
+
+export function toExperimentSource(
   doc: ParsedDoc,
   issues: Issue[],
-): ExperimentEntry | null {
+): ExperimentSourceDraft | null {
   if (!requireFrontmatter(doc, issues, "Experiment")) return null;
   const dirName = doc.path.split("/").slice(-2)[0] ?? slugFromPath(doc.path);
   const id = asString(doc.data.id) ?? dirName;
@@ -289,15 +391,21 @@ export function toExperimentEntry(
       message: `Invalid or missing field: status (expected ${STATUSES.join(" | ")})`,
     });
   }
+  const stack = asStringArrayField(doc.data.language ?? doc.data.languages);
+  if (stack.length === 0) {
+    issues.push({ level: "error", file: doc.path, message: "Missing field: language" });
+  }
+
+  const revision = readRevision(doc.data, "revision", doc.path, issues);
+  if (!revision.valid) return null;
+
   return {
-    kind: "experiment",
     slug: dirName,
-    path: doc.path,
     id,
     number: number ?? Number.NaN,
     title: title ?? id,
     status: status ?? "planned",
-    language: asStringArrayField(doc.data.language ?? doc.data.languages),
+    stack,
     concepts: asStringArrayField(doc.data.concepts),
     day: asNumber(doc.data.day),
     url: asString(doc.data.url ?? doc.data.github),
@@ -308,8 +416,38 @@ export function toExperimentEntry(
         doc.data.production_project ??
         doc.data.productionProject,
     ),
-    assist: parseAssist(doc.data, doc.path, issues),
+    code: { path: dirNameOf(doc.path), readme: doc.path },
+    revision: revision.value ?? 0,
+    body: doc.body,
+    path: doc.path,
+  };
+}
 
+export interface ExperimentDocDraft {
+  id: string;
+  language: Language;
+  revision: number;
+  sourceRevision?: number;
+  path: string;
+  title?: string;
+  summary?: string;
+  body: string;
+}
+
+/** Language-specific experiment documentation under `docs/<lang>/experiments/`. */
+export function toExperimentDoc(
+  doc: ParsedDoc,
+  issues: Issue[],
+  expected?: Language,
+): ExperimentDocDraft | null {
+  if (!requireFrontmatter(doc, issues, "Experiment document")) return null;
+  const identity = parseDocIdentity(doc.data, doc.path, issues, expected);
+  if (!identity) return null;
+  return {
+    ...identity,
+    path: doc.path,
+    title: asString(doc.data.title),
+    summary: asString(doc.data.summary),
     body: doc.body,
   };
 }
@@ -317,7 +455,8 @@ export function toExperimentEntry(
 export function toComparisonEntry(
   doc: ParsedDoc,
   issues: Issue[],
-): ComparisonEntry | null {
+  expected?: Language,
+): Omit<ComparisonEntry, "translation"> | null {
   if (!requireFrontmatter(doc, issues, "Comparison")) return null;
   const slug = slugFromPath(doc.path);
   const title = asString(doc.data.title);
@@ -332,11 +471,14 @@ export function toComparisonEntry(
       message: "Missing field: date (expected YYYY-MM-DD)",
     });
   }
+  const identity = parseDocIdentity(doc.data, doc.path, issues, expected);
+  if (!identity) return null;
+
   return {
+    ...identity,
     kind: "comparison",
     slug,
     path: doc.path,
-    id: asString(doc.data.id) ?? slug,
     title: title ?? slug,
     date: date ?? "",
     status: asStatus(doc.data.status) ?? "completed",
@@ -347,8 +489,23 @@ export function toComparisonEntry(
     productionProject: asProjectRef(
       doc.data.production_project ?? doc.data.productionProject,
     ),
-    assist: parseAssist(doc.data, doc.path, issues),
 
     body: doc.body,
   };
+}
+
+/** Where a document lives inside a language tree, e.g. `daily`. */
+export type DocSection = "daily" | "concepts" | "experiments" | "comparisons" | "architecture";
+
+export function languageOf(path: string, root = "docs"): Language | undefined {
+  const match = new RegExp(`^${root}/(en|zh)/`).exec(path);
+  return match?.[1] as Language | undefined;
+}
+
+export function defaultLanguageOf(): Language {
+  return DEFAULT_LANGUAGE;
+}
+
+export function sourceLanguage(): Language {
+  return SOURCE_LANGUAGE;
 }

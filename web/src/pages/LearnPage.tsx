@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { days, phaseName, progress } from "../lib/content";
+import { docsFor, phaseName, progress } from "../lib/content";
+import { useLanguage } from "../lib/language";
+import { t } from "../lib/strings";
 import { statusLabel } from "../lib/status";
 import { DayCard } from "../components/learning/DayCard";
 import { EmptyState } from "../components/ui/Primitives";
@@ -9,12 +11,17 @@ const FILTERS = ["all", "completed", "learning", "planned"] as const;
 type Filter = (typeof FILTERS)[number];
 
 export function LearnPage() {
+  const { language } = useLanguage();
+
   const [filter, setFilter] = useState<Filter>("all");
   const [phase, setPhase] = useState<string>("all");
 
-  const phases = useMemo(() => [...new Set(days.map((day) => day.phase))].sort(), []);
+  // The reader asked for a language; the list, the titles and the counts all
+  // answer from that tree — never from the English source.
+  const list = docsFor(language).days;
+  const phases = useMemo(() => [...new Set(list.map((day) => day.phase))].sort(), [list]);
 
-  const visible = days.filter(
+  const visible = list.filter(
     (day) =>
       (filter === "all" || day.status === filter) &&
       (phase === "all" || day.phase === phase),
@@ -22,11 +29,12 @@ export function LearnPage() {
 
   return (
     <PageContainer
-      title="Learning"
-      description="Every unit of study is one Markdown file in docs/daily/. The list you see is generated from them — adding a day needs no code change."
+      title={t(language, "learn.title")}
+      description={t(language, "learn.description")}
       meta={
         <span className="font-mono text-[11px] text-[var(--faint)]">
-          {days.length} days · {progress.summary.completionRate}% complete
+          {t(language, "label.days", { count: list.length })} ·{" "}
+          {t(language, "learn.complete", { percent: progress.summary.completionRate })}
         </span>
       }
     >
@@ -50,9 +58,9 @@ export function LearnPage() {
           value={phase}
           onChange={(event) => setPhase(event.target.value)}
           className="rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-1 font-mono text-[11px] text-[var(--dim)]"
-          aria-label="Filter by phase"
+          aria-label={t(language, "learn.filterPhase")}
         >
-          <option value="all">All phases</option>
+          <option value="all">{t(language, "learn.allPhases")}</option>
           {phases.map((id) => (
             <option key={id} value={id}>
               {phaseName(id)}
@@ -67,8 +75,8 @@ export function LearnPage() {
         ))}
         {visible.length === 0 && (
           <EmptyState
-            title="No days match this filter"
-            description="Clear the status or phase filter to see the rest of the timeline."
+            title={t(language, "learn.noMatch")}
+            description={t(language, "learn.noMatchBody")}
           />
         )}
       </div>

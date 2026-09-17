@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ReactElement } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -15,10 +15,8 @@ import { LearnPage } from "../web/src/pages/LearnPage";
 import { NotFoundPage } from "../web/src/pages/NotFoundPage";
 import { ProgressPage } from "../web/src/pages/ProgressPage";
 import { ProjectsPage } from "../web/src/pages/ProjectsPage";
-import { MarkdownContent } from "../web/src/components/learning/MarkdownContent";
-import { Layout } from "../web/src/components/layout/Layout";
-import { excerpt } from "../web/src/lib/markdown";
-import { ReadingModeProvider } from "../web/src/components/layout/ReadingModeProvider";
+import App from "../web/src/App";
+import { LanguageProvider } from "../web/src/components/layout/LanguageProvider";
 import {
   comparisons,
   concepts,
@@ -31,16 +29,16 @@ import {
 
 afterEach(cleanup);
 
-/** Render one route the way the router would, including its params. */
 /** Render one route the way the router would — inside the global providers. */
 function renderRoute(entry: string, pattern: string, element: ReactElement) {
+  const prefixed = (path: string) => (path === "/" ? "/en" : `/en${path}`);
   render(
-    <MemoryRouter initialEntries={[entry]}>
-      <ReadingModeProvider>
+    <MemoryRouter initialEntries={[prefixed(entry)]}>
+      <LanguageProvider>
         <Routes>
-          <Route path={pattern} element={element} />
+          <Route path={`/:lang${pattern === "/" ? "" : pattern}`} element={element} />
         </Routes>
-      </ReadingModeProvider>
+      </LanguageProvider>
     </MemoryRouter>,
   );
 }
@@ -143,7 +141,7 @@ describe("pages render from generated data", () => {
 
   it("Progress renders phases, calendar and questions", () => {
     renderRoute("/progress", "/progress", <ProgressPage />);
-    expect(bodyText()).toContain("Timeline");
+    expect(bodyText()).toContain("Learning timeline");
     expect(bodyText()).toContain("Phases");
     expect(bodyText()).toContain("Questions");
     expect(document.querySelector("svg rect")).toBeTruthy();
@@ -156,7 +154,7 @@ describe("pages render from generated data", () => {
   it("About explains the loop and the content model", () => {
     renderRoute("/about", "/about", <AboutPage />);
     expect(bodyText()).toContain("One day, one commit");
-    expect(bodyText()).toContain("docs/daily/day-NN.md");
+    expect(bodyText()).toContain("docs/{en,zh}/daily/day-NN.md");
     expect(bodyText()).toContain("npm run generate");
   });
 
@@ -173,143 +171,141 @@ describe("pages render from generated data", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * Reading mode: English is the content, assistance is revealed on demand.
+ * Bilingual routing: the URL owns the language, storage only remembers.
  * ------------------------------------------------------------------ */
 
-const STORAGE_KEY = "lab-reading-mode";
+const LANGUAGE_KEY = "agent-lab-language";
 
-const ASSIST_MD = `## What I Learned
-
-The Agent Loop is an iterative execution cycle.
-
-> **中文理解**
->
-> Agent Loop 可以理解为：模型决策 → 调用工具 → 获得结果 → 再次决策。
-
-> Not assistance, just a quote.
-`;
-
-/** Cards, not the page sidebars, which are \`<aside>\` too. */
-const assistCards = () =>
-  [...document.querySelectorAll('aside[lang="zh-CN"]')].map(
-    (node) => node.textContent ?? "",
-  );
-
-function renderMarkdown(content: string) {
-  render(
-    <ReadingModeProvider>
-      <MarkdownContent content={content} />
-    </ReadingModeProvider>,
-  );
-}
-
-function renderSiteRoute(entry: string, pattern: string, element: ReactElement) {
+/** Mount the real router so guards, legacy redirects and the switch all run. */
+async function renderApp(entry: string) {
   render(
     <MemoryRouter initialEntries={[entry]}>
-      <ReadingModeProvider>
-        <Layout>
-          <Routes>
-            <Route path={pattern} element={element} />
-          </Routes>
-        </Layout>
-      </ReadingModeProvider>
+      <App />
     </MemoryRouter>,
   );
+  // Document pages are lazy-loaded; wait until a page actually painted.
+  await waitFor(() => expect(document.querySelector("h1")).not.toBeNull());
 }
 
-const headerButtons = () =>
-  [...document.querySelectorAll("header button")].map((node) => node.textContent);
+const hrefs = () =>
+  [...document.querySelectorAll("a")].map((anchor) => anchor.getAttribute("href") ?? "");
 
-const clickHeaderButton = (label: string) => {
-  const node = [...document.querySelectorAll("header button")].find(
-    (button) => button.textContent === label,
-  );
-  if (!node) throw new Error(`no header button labelled ${label}`);
-  fireEvent.click(node);
-};
-
-describe("chinese assistance rendering", () => {
+describe("language routing", () => {
   beforeEach(() => localStorage.clear());
 
-  it("stays hidden in the default English mode", () => {
-    renderMarkdown(ASSIST_MD);
-    expect(assistCards()).toEqual([]);
-    expect(bodyText()).toContain("iterative execution cycle");
-    expect(bodyText()).not.toContain("模型决策");
+  it("serves the Chinese tree under /zh", async () => {
+    await renderApp("/zh/learn/day/1");
+    expect(bodyText()).toContain("Agent 到底是什么");
   });
 
-  it("reveals the block as its own labelled card", () => {
-    localStorage.setItem(STORAGE_KEY, "assist");
-    renderMarkdown(ASSIST_MD);
-    expect(assistCards()).toHaveLength(1);
-    expect(assistCards()[0]).toContain("中文理解");
-    expect(assistCards()[0]).toContain("模型决策");
-    // the marker paragraph identifies the block; it must not print twice
-    expect(bodyText().split("中文理解").length - 1).toBe(1);
+  it("serves the English source under /en", async () => {
+    await renderApp("/en/learn/day/1");
+    expect(bodyText()).toContain(days[0]!.title);
   });
 
-  it("labels a deep block as deep", () => {
-    localStorage.setItem(STORAGE_KEY, "assist");
-    renderMarkdown("> **中文深入理解**\n>\n> 当前 LLM 的工作桌面。\n");
-    expect(assistCards()[0]).toContain("中文深入理解");
-    expect(assistCards()[0]).toContain("工作桌面");
+  it("keeps links written before the split alive", async () => {
+    await renderApp("/learn/day/1");
+    expect(bodyText()).toContain(days[0]!.title);
   });
 
-  it("leaves ordinary blockquotes untouched", () => {
-    localStorage.setItem(STORAGE_KEY, "assist");
-    renderMarkdown(ASSIST_MD);
-    const quotes = [...document.querySelectorAll("blockquote")];
-    expect(quotes).toHaveLength(1);
-    expect(quotes[0]?.textContent).toContain("just a quote");
+  it("404s an unknown language prefix instead of falling back to English", async () => {
+    await renderApp("/fr/learn");
+    expect(bodyText()).toContain("./nowhere");
   });
 
-  it("keeps assistance out of card excerpts", () => {
-    const day = days.find((item) => item.assist !== undefined);
-    expect(day?.day).toBe(1);
-    const text = excerpt(day!.body);
-    expect(text).toContain("The difference between a");
-    expect(text).not.toContain("中文理解");
-    expect(text).not.toContain("控制流在谁手上");
+  it("uses the remembered language for a bare /", async () => {
+    localStorage.setItem(LANGUAGE_KEY, "zh");
+    await renderApp("/");
+    expect(bodyText()).toContain("重新把它们造出来");
+  });
+
+  it("lets the URL win over the remembered language", async () => {
+    localStorage.setItem(LANGUAGE_KEY, "zh");
+    await renderApp("/en/about");
+    expect(bodyText()).toContain("A public learning record");
+  });
+
+  it("switches language without changing the document", async () => {
+    await renderApp("/en/concepts/agent-loop");
+    expect(hrefs()).toContain("/zh/concepts/agent-loop");
+  });
+
+  it("remembers the language the reader clicked", async () => {
+    await renderApp("/en/learn/day/1");
+    fireEvent.click(document.querySelector('a[lang="zh"]')!);
+    expect(localStorage.getItem(LANGUAGE_KEY)).toBe("zh");
+    await waitFor(() => expect(bodyText()).toContain("Agent 到底是什么"));
+  });
+
+  it("names a missing translation instead of substituting English", async () => {
+    await renderApp("/zh/learn/day/3");
+    expect(bodyText()).toContain("中文版本尚未完成");
+    expect(hrefs()).toContain("/en/learn/day/3");
   });
 });
 
-describe("reading mode switch", () => {
+/* ------------------------------------------------------------------ *
+ * Document pages resolve inside the requested tree, not "English if lost".
+ * ------------------------------------------------------------------ */
+
+describe("translated document pages", () => {
   beforeEach(() => localStorage.clear());
 
-  it("offers both modes on a document that has assistance", () => {
-    renderSiteRoute("/learn/day/1", "/learn/day/:day", <DayPage />);
-    expect(headerButtons()).toContain("EN");
-    expect(headerButtons()).toContain("中文辅助");
+  it("renders a translated concept from the Chinese tree", async () => {
+    await renderApp("/zh/concepts/agent-loop");
+    expect(bodyText()).toContain("执行循环");
   });
 
-  it("is absent when the document has nothing to reveal", () => {
-    renderSiteRoute("/learn/day/2", "/learn/day/:day", <DayPage />);
-    expect(headerButtons()).not.toContain("中文辅助");
-    expect(assistCards()).toEqual([]);
+  it("renders a translated experiment from the Chinese tree", async () => {
+    await renderApp("/zh/experiments/003-agent-loop");
+    expect(bodyText()).toContain("迷你 Agent Loop");
   });
 
-  it("toggles the real Day 01 note and remembers the choice", () => {
-    renderSiteRoute("/learn/day/1", "/learn/day/:day", <DayPage />);
-    expect(assistCards()).toEqual([]);
-    expect(bodyText()).toContain("control flow");
-
-    clickHeaderButton("中文辅助");
-    expect(assistCards().length).toBeGreaterThan(0);
-    expect(bodyText()).toContain("控制流在谁手上");
-    expect(localStorage.getItem(STORAGE_KEY)).toBe("assist");
-
-    clickHeaderButton("EN");
-    expect(assistCards()).toEqual([]);
-    expect(bodyText()).toContain("control flow");
+  it("renders a translated comparison from the Chinese tree", async () => {
+    await renderApp("/zh/comparisons/custom-agent-vs-langgraph");
+    expect(bodyText()).toContain("LangGraph 的对比");
   });
 
-  it("works on concept pages too", () => {
-    localStorage.setItem(STORAGE_KEY, "assist");
-    renderSiteRoute("/concepts/agent-loop", "/concepts/:id", <ConceptPage />);
-    expect(assistCards().join("\n")).toContain("难点在退出条件");
-    expect(assistCards().join("\n")).toContain("模型没有状态");
+  it("404s an unknown id in either language — no notice without a source", async () => {
+    await renderApp("/en/concepts/not-a-concept");
+    expect(bodyText()).toContain("./nowhere");
     cleanup();
-    renderSiteRoute("/concepts/agent", "/concepts/:id", <ConceptPage />);
-    expect(headerButtons()).not.toContain("中文辅助");
+    await renderApp("/zh/concepts/not-a-concept");
+    expect(bodyText()).toContain("./nowhere");
+    // the notice is not a substitute for a real 404
+    expect(bodyText()).not.toContain("中文版本尚未完成");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * A page in one language is that language all the way down — list,
+ * titles and chrome alike.
+ * ------------------------------------------------------------------ */
+
+describe("pages answer from the requested tree", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("lists Chinese day titles on /zh/learn, not the English ones", async () => {
+    await renderApp("/zh/learn");
+    expect(bodyText()).toContain("LLM API、流式输出与用量统计");
+    expect(bodyText()).not.toContain(days[1]!.title);
+    // day-03 has no Chinese version, so the Chinese list is one day shorter
+    expect(bodyText()).toContain("共 2 天");
+  });
+
+  it("shows English day titles on /en/learn", async () => {
+    await renderApp("/en/learn");
+    expect(bodyText()).toContain(days[1]!.title);
+    expect(bodyText()).toContain("3 days");
+  });
+
+  it("translates the chrome of the progress page", async () => {
+    await renderApp("/zh/progress");
+    expect(bodyText()).toContain("学习时间线");
+  });
+
+  it("translates the about page intro sentence", async () => {
+    await renderApp("/zh/about");
+    expect(bodyText()).toContain("个学习日");
   });
 });

@@ -1,6 +1,8 @@
 ---
 id: agent
 title: Agent
+language: en
+revision: 1
 category: fundamentals
 status: learning
 progress: 45

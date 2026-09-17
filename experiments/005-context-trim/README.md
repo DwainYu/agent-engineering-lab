@@ -3,6 +3,7 @@ id: 005-context-trim
 number: 5
 title: Context Budget And Trimming
 status: completed
+revision: 1
 language:
   - python
 concepts:

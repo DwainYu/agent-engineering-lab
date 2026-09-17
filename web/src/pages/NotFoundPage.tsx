@@ -1,15 +1,19 @@
 import { Link } from "react-router-dom";
 import { PageContainer } from "../components/layout/Layout";
+import { langHref, useLanguage } from "../lib/language";
+import { t, type StringKey } from "../lib/strings";
 
-const SUGGESTIONS = [
-  { to: "/learn", label: "Learning timeline" },
-  { to: "/concepts", label: "Concept map" },
-  { to: "/experiments", label: "Experiments" },
-  { to: "/projects", label: "Projects" },
-  { to: "/progress", label: "Progress" },
+const SUGGESTIONS: { path: string; key: StringKey }[] = [
+  { path: "learn", key: "label.timeline" },
+  { path: "concepts", key: "label.map" },
+  { path: "experiments", key: "nav.experiments" },
+  { path: "projects", key: "nav.projects" },
+  { path: "progress", key: "nav.progress" },
 ];
 
 export function NotFoundPage() {
+  const { language } = useLanguage();
+
   return (
     <PageContainer>
       <div className="mx-auto max-w-md py-12 text-center">
@@ -22,19 +26,19 @@ export function NotFoundPage() {
           <span className="animate-pulse text-[var(--accent)]">▌</span>
         </h1>
         <p className="mt-3 text-[13px] leading-6 text-[var(--dim)]">
-          No markdown file resolves to this route. If it should exist, add it under{" "}
-          <code className="font-mono text-[12px]">docs/</code> and run{" "}
+          {t(language, "notFound.body1")}{" "}
+          <code className="font-mono text-[12px]">docs/</code> {t(language, "notFound.body2")}{" "}
           <code className="font-mono text-[12px]">npm run generate</code>.
         </p>
 
         <ul className="mt-8 flex flex-wrap justify-center gap-2">
           {SUGGESTIONS.map((item) => (
-            <li key={item.to}>
+            <li key={item.path}>
               <Link
-                to={item.to}
+                to={langHref(language, item.path)}
                 className="rounded-md border border-[var(--line)] px-3 py-1.5 font-mono text-[12px] text-[var(--dim)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--text)]"
               >
-                {item.label}
+                {t(language, item.key)}
               </Link>
             </li>
           ))}

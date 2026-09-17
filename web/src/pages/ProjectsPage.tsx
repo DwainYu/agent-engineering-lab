@@ -1,50 +1,57 @@
 import { Link } from "react-router-dom";
 import { PageContainer } from "../components/layout/Layout";
 import { Card, SectionTitle } from "../components/ui/Primitives";
-import { comparisons, conceptById, site, summary } from "../lib/content";
+import { docsFor, conceptById, site, summary } from "../lib/content";
+import { langHref, useLanguage } from "../lib/language";
+import { t, type StringKey } from "../lib/strings";
 import { githubRepoUrl } from "../lib/paths";
 
-const ROLE_LABEL: Record<string, string> = {
-  lab: "Lab",
-  training: "Training ground",
-  production: "Production",
+const ROLE_LABEL: Record<string, StringKey> = {
+  lab: "label.role.lab",
+  training: "label.role.training",
+  production: "label.role.production",
 };
 
-const ROLE_BLURB: Record<string, string> = {
-  lab: "Records what I learned. Documents, concepts, experiment notebooks, progress — the website you are reading.",
-  training:
-    "Where I write the code myself, small and readable. Minimal dependencies, experiments first, nothing hidden behind a framework.",
-  production:
-    "Where a real product ships. Performance, reliability and cost pressure come from here, not from the training ground.",
+const ROLE_BLURB: Record<string, StringKey> = {
+  lab: "about.principle.0.body",
+  training: "about.principle.1.body",
+  production: "about.principle.4.body",
 };
 
 export function ProjectsPage() {
+  const { language } = useLanguage();
+  const docs = docsFor(language);
+
   return (
     <PageContainer
-      title="Projects"
-      description="The learning system spans three repositories with one rule each: record it, practise it, ship it. Keeping them separate is what stops practice code from polluting production and production pressure from polluting practice."
+      title={t(language, "nav.projects")}
+      description={t(language, "projects.description")}
       meta={
         <span className="font-mono text-[11px] text-[var(--faint)]">
-          {site.projects.length} repositories
+          {site.projects.length} {t(language, "label.projects")}
         </span>
       }
     >
       <section className="mb-10">
-        <SectionTitle>How the three relate</SectionTitle>
+        <SectionTitle>{t(language, "projects.relate")}</SectionTitle>
         <div className="grid items-stretch gap-2 lg:grid-cols-7">
-          {[
-            "Principles",
-            "Minimal implementation",
-            "Training ground",
-            "Production project",
-          ].map((step, index) => (
+          {(
+            [
+              "about.principle.2.title",
+              "label.notebook",
+              "label.role.training",
+              "label.role.production",
+            ] as const
+          ).map((key, index) => (
             <div
-              key={step}
+              key={key}
               className={`rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-3 text-center lg:col-span-${
                 index === 3 ? 2 : 1
               }`}
             >
-              <p className="font-mono text-[11px] text-[var(--dim)]">{step}</p>
+              <p className="font-mono text-[11px] text-[var(--dim)]">
+                {t(language, key)}
+              </p>
               <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--faint)]">
                 {["docs", "experiments", "set18", "set17"][index]}
               </p>
@@ -52,8 +59,7 @@ export function ProjectsPage() {
           ))}
         </div>
         <p className="mt-3 font-mono text-[11px] text-[var(--faint)]">
-          ↑ arrows are implied left-to-right; every hop is a commit in a different
-          repository
+          {t(language, "projects.about.arrows")}
         </p>
       </section>
 
@@ -64,7 +70,7 @@ export function ProjectsPage() {
             <Card key={project.id} className="flex flex-col">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--faint)]">
-                  {ROLE_LABEL[project.role] ?? project.role}
+                  {t(language, ROLE_LABEL[project.role] ?? "label.role.lab")}
                 </span>
                 <span className="font-mono text-[11px] text-[var(--accent)]">
                   {project.currentPhase ?? project.id}
@@ -89,7 +95,7 @@ export function ProjectsPage() {
                 {project.tagline}
               </p>
               <p className="mt-3 text-[12px] leading-6 text-[var(--faint)]">
-                {ROLE_BLURB[project.role] ?? ""}
+                {t(language, ROLE_BLURB[project.role] ?? "about.principle.0.body")}
               </p>
 
               {project.focus.length > 0 && (
@@ -110,19 +116,19 @@ export function ProjectsPage() {
                   <div>
                     <p className="text-[15px] text-[var(--text)]">{stats.days}</p>
                     <p className="text-[9px] uppercase tracking-[0.14em] text-[var(--faint)]">
-                      days
+                      {t(language, "label.daysPlural")}
                     </p>
                   </div>
                   <div>
                     <p className="text-[15px] text-[var(--text)]">{stats.concepts}</p>
                     <p className="text-[9px] uppercase tracking-[0.14em] text-[var(--faint)]">
-                      concepts
+                      {t(language, "label.conceptsPlural")}
                     </p>
                   </div>
                   <div>
                     <p className="text-[15px] text-[var(--text)]">{stats.experiments}</p>
                     <p className="text-[9px] uppercase tracking-[0.14em] text-[var(--faint)]">
-                      exps
+                      {t(language, "label.expsPlural")}
                     </p>
                   </div>
                 </div>
@@ -153,18 +159,21 @@ export function ProjectsPage() {
       <section className="mt-12">
         <SectionTitle
           hint={
-            <Link to="/concepts" className="hover:text-[var(--text)]">
-              → concepts
+            <Link
+              to={langHref(language, "concepts")}
+              className="hover:text-[var(--text)]"
+            >
+              → {t(language, "nav.concepts")}
             </Link>
           }
         >
-          Why not just use a framework
+          {t(language, "label.headline")}
         </SectionTitle>
         <div className="grid gap-3 sm:grid-cols-2">
-          {comparisons.map((comparison) => (
+          {docs.comparisons.map((comparison) => (
             <Link
               key={comparison.id}
-              to={`/comparisons/${comparison.id}`}
+              to={langHref(language, `comparisons/${comparison.id}`)}
               className="block"
             >
               <Card className="h-full transition-colors hover:border-[var(--accent)]/40">
@@ -173,7 +182,7 @@ export function ProjectsPage() {
                 </h3>
                 <p className="mt-2 line-clamp-3 text-[13px] leading-6 text-[var(--dim)]">
                   {comparison.concepts
-                    .map((id) => conceptById(id)?.title ?? id)
+                    .map((id) => conceptById(language, id)?.title ?? id)
                     .join(" · ")}
                 </p>
               </Card>

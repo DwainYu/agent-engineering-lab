@@ -1,23 +1,47 @@
 #!/usr/bin/env tsx
 import { loadContent } from "./lib/load.js";
+import { LANGUAGES } from "./lib/language.js";
+import { countTranslations } from "./lib/translation.js";
 import { summarize, validateContent } from "./lib/validate.js";
 
 const bundle = loadContent();
 const issues = [...bundle.issues, ...validateContent(bundle)];
 const { errors, warnings } = summarize(issues);
 
-const counts = {
-  days: bundle.days.length,
-  concepts: bundle.concepts.length,
-  experiments: bundle.experiments.length,
-  comparisons: bundle.comparisons.length,
-  questions: bundle.questions.asked,
-};
+const counts = LANGUAGES.map((language) => {
+  const tree = bundle.byLanguage[language];
+  return {
+    language,
+    days: tree.days.length,
+    concepts: tree.concepts.length,
+    experiments: tree.experiments.length,
+    comparisons: tree.comparisons.length,
+    questions: tree.questions.asked,
+  };
+});
+
+const total = counts.reduce(
+  (sum, entry) => sum + entry.days + entry.concepts + entry.experiments + entry.comparisons + entry.questions,
+0,
+);
 
 console.log(
-  `Checked ${Object.values(counts).reduce((a, b) => a + b, 0)} content records ` +
-    `(days ${counts.days}, concepts ${counts.concepts}, experiments ${counts.experiments}, ` +
-    `comparisons ${counts.comparisons}, questions ${counts.questions})`,
+  `Checked ${total} content records ` +
+    counts
+      .map(
+        (entry) =>
+          `${entry.language}: days ${entry.days}, concepts ${entry.concepts}, ` +
+          `experiments ${entry.experiments}, comparisons ${entry.comparisons}, ` +
+          `questions ${entry.questions}`,
+      )
+      .join(" | "),
+);
+
+const translation = countTranslations(bundle.translations);
+console.log(
+  `Translations: ${translation.synced} synced · ` +
+    `${translation.outdated} outdated · ${translation.missing} missing ` +
+    `(of ${translation.total} English documents)`,
 );
 
 if (warnings.length > 0) {

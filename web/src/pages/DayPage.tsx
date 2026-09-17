@@ -3,20 +3,45 @@ import { DayNav } from "../components/learning/DayNav";
 import { MarkdownContent } from "../components/learning/MarkdownContent";
 import { PageContainer } from "../components/layout/Layout";
 import { CategoryPill, Pill, StatusPill } from "../components/ui/Primitives";
-import { conceptById, days, experimentById, phaseName, site } from "../lib/content";
+import {
+  conceptById,
+  dayByNumber,
+  experimentById,
+  phaseName,
+  site,
+  sourceLanguage,
+} from "../lib/content";
+import { langHref, useLanguage } from "../lib/language";
+import { t } from "../lib/strings";
+import { TranslationMissing } from "../components/learning/TranslationNotice";
 import { projectFileUrl, repoFileUrl } from "../lib/paths";
 import { NotFoundPage } from "./NotFoundPage";
 
 export function DayPage() {
+  const { language } = useLanguage();
+
   const { day: param } = useParams();
-  const day = days.find((item) => String(item.day) === param);
-  if (!day) return <NotFoundPage />;
+  const canonical = dayByNumber(sourceLanguage(), param);
+  const day = dayByNumber(language, param);
+  if (!day) {
+    // The day exists but has not been translated: name the gap, hand back the
+    // version that does exist. Never substitute English silently.
+    if (canonical)
+      return (
+        <TranslationMissing
+          language={language}
+          title={canonical.title}
+          path={`learn/day/${canonical.day}`}
+        />
+      );
+    return <NotFoundPage />;
+  }
 
   const experiments = day.experiments
-    .map((id) => experimentById(id))
+    .map((id) => experimentById(language, id))
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
   const concepts = day.concepts
-    .map((id) => conceptById(id))
+    .map((id) => conceptById(language, id))
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   return (
@@ -24,7 +49,7 @@ export function DayPage() {
       <header className="border-b border-[var(--line)] pb-6">
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            to="/learn"
+            to={langHref(language, "learn")}
             className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--faint)] hover:text-[var(--text)]"
           >
             ← Learning
@@ -81,13 +106,13 @@ export function DayPage() {
           {experiments.length > 0 && (
             <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
               <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--faint)]">
-                Experiment
+                {t(language, "day.experiment")}
               </p>
               <ul className="mt-2 space-y-1.5">
                 {experiments.map((experiment) => (
                   <li key={experiment.id}>
                     <Link
-                      to={`/experiments/${experiment.id}`}
+                      to={langHref(language, `experiments/${experiment.id}`)}
                       className="text-[13px] text-[var(--text)] hover:text-[var(--accent)]"
                     >
                       #{String(experiment.number).padStart(3, "0")} {experiment.title}
@@ -101,13 +126,13 @@ export function DayPage() {
           {concepts.length > 0 && (
             <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
               <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--faint)]">
-                Concepts
+                {t(language, "label.concepts")}
               </p>
               <ul className="mt-2 space-y-1.5">
                 {concepts.map((concept) => (
                   <li key={concept.id}>
                     <Link
-                      to={`/concepts/${concept.id}`}
+                      to={langHref(language, `concepts/${concept.id}`)}
                       className="text-[13px] text-[var(--text)] hover:text-[var(--accent)]"
                     >
                       {concept.title}
@@ -124,7 +149,7 @@ export function DayPage() {
           {day.trainingProject && (
             <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
               <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--faint)]">
-                Training project
+                {t(language, "day.training")}
               </p>
               <a
                 href={projectFileUrl(day.trainingProject)}
@@ -140,7 +165,7 @@ export function DayPage() {
           {day.sources.length > 0 && (
             <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
               <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--faint)]">
-                Sources
+                {t(language, "label.sources")}
               </p>
               <ul className="mt-2 space-y-1.5">
                 {day.sources.map((source) => (

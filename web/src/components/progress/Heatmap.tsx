@@ -1,12 +1,14 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { langHref, useLanguage } from "../../lib/language";
+import { t } from "../../lib/strings";
 import type { DayEntry } from "../../../../scripts/lib/types";
 
 const CELL = 11;
 const GAP = 3;
 const LEFT = 18;
 const TOP = 16;
-const WEEK_LABELS = [
+const MONTH_NAMES_EN = [
   "Jan",
   "Feb",
   "Mar",
@@ -19,13 +21,41 @@ const WEEK_LABELS = [
   "Oct",
   "Nov",
   "Dec",
-];
+] as const;
+const MONTH_NAMES_ZH = [
+  "1月",
+  "2月",
+  "3月",
+  "4月",
+  "5月",
+  "6月",
+  "7月",
+  "8月",
+  "9月",
+  "10月",
+  "11月",
+  "12月",
+] as const;
+const STATUS_LABELS_EN = {
+  completed: "completed",
+  learning: "learning",
+  planned: "planned",
+} as const;
+const STATUS_LABELS_ZH = {
+  completed: "已完成",
+  learning: "学习中",
+  planned: "计划中",
+} as const;
 
 /**
  * GitHub-style calendar built from the Day notes themselves (§19) —
  * no GitHub API, the repository is the record.
  */
 export function Heatmap({ days }: { days: DayEntry[] }) {
+  const { language } = useLanguage();
+  const monthNames = language === "zh" ? MONTH_NAMES_ZH : MONTH_NAMES_EN;
+  const statusLabels = language === "zh" ? STATUS_LABELS_ZH : STATUS_LABELS_EN;
+
   const { cells, weeks, first, last, months, dayByDate } = useMemo(() => {
     const byDate = new Map<string, DayEntry>();
     for (const day of days) {
@@ -51,7 +81,7 @@ export function Heatmap({ days }: { days: DayEntry[] }) {
       const week = Math.floor(cells.length / 7);
       const x = LEFT + week * (CELL + GAP);
       if (cursor.getUTCMonth() !== previousMonth) {
-        months.push({ label: WEEK_LABELS[cursor.getUTCMonth()] ?? "", x });
+        months.push({ label: monthNames[cursor.getUTCMonth()] ?? "", x });
         previousMonth = cursor.getUTCMonth();
       }
       cells.push({
@@ -65,7 +95,8 @@ export function Heatmap({ days }: { days: DayEntry[] }) {
     }
 
     return { cells, weeks, first, last, months, dayByDate: byDate };
-  }, [days]);
+    // Re-calculate when language changes so month labels update without remounting.
+  }, [days, monthNames]);
 
   const width = LEFT + weeks * (CELL + GAP) + CELL;
   const height = TOP + 7 * (CELL + GAP) + CELL;
@@ -77,7 +108,7 @@ export function Heatmap({ days }: { days: DayEntry[] }) {
         width={width}
         height={height}
         role="img"
-        aria-label="Learning calendar"
+        aria-label={t(language, "heatmap.calendar")}
       >
         {months.map((month) => (
           <text
@@ -123,7 +154,11 @@ export function Heatmap({ days }: { days: DayEntry[] }) {
             >
               <title>
                 {day
-                  ? `Day ${day.day} — ${day.title} (${day.status})`
+                  ? t(language, "heatmap.dayX", {
+                      day: day.day,
+                      title: day.title,
+                      status: statusLabels[day.status] ?? day.status,
+                    })
                   : `${cell.date} — no record`}
               </title>
             </rect>
@@ -135,7 +170,9 @@ export function Heatmap({ days }: { days: DayEntry[] }) {
         <span>
           {first.toISOString().slice(0, 10)} → {last.toISOString().slice(0, 10)}
         </span>
-        <span>{dayByDate.size} recorded days</span>
+        <span>
+          {dayByDate.size} {t(language, "label.daysPlural")}
+        </span>
         <span className="ml-auto flex items-center gap-3">
           {(["completed", "learning", "planned"] as const).map((status) => (
             <span key={status} className="flex items-center gap-1.5">
@@ -150,7 +187,7 @@ export function Heatmap({ days }: { days: DayEntry[] }) {
                         : "var(--todo)",
                 }}
               />
-              {status}
+              {statusLabels[status] ?? status}
             </span>
           ))}
         </span>
@@ -158,11 +195,11 @@ export function Heatmap({ days }: { days: DayEntry[] }) {
 
       {days.length > 0 && (
         <p className="mt-2 text-[11px] text-[var(--faint)]">
-          Each cell comes from{" "}
-          <Link to="/learn" className="text-[var(--accent)]">
-            docs/daily/
+          {t(language, "heatmap.source1")}{" "}
+          <Link to={langHref(language, "learn")} className="text-[var(--accent)]">
+            docs/{language}/daily/
           </Link>{" "}
-          frontmatter.
+          {t(language, "heatmap.source2")}
         </p>
       )}
     </div>

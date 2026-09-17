@@ -1,25 +1,45 @@
 import { Link } from "react-router-dom";
 import { summary } from "../../lib/content";
+import { langHref, useLanguage } from "../../lib/language";
+import { t } from "../../lib/strings";
 import { SectionTitle } from "../ui/Primitives";
 
 export function ProgressOverview() {
+  const { language } = useLanguage();
+
   const items = [
-    { label: "Days planned", value: summary.totalDays, to: "/progress" },
-    { label: "Completed", value: summary.completedDays, to: "/learn" },
-    { label: "Concepts", value: summary.conceptsTotal, to: "/concepts" },
-    { label: "Experiments", value: summary.experimentsTotal, to: "/experiments" },
+    {
+      label: t(language, "label.daysPlanned"),
+      value: summary.totalDays,
+      to: langHref(language, "progress"),
+    },
+    {
+      label: t(language, "label.completed"),
+      value: summary.completedDays,
+      to: langHref(language, "learn"),
+    },
+    {
+      label: t(language, "nav.concepts"),
+      value: summary.conceptsTotal,
+      to: langHref(language, "concepts"),
+    },
+    {
+      label: t(language, "nav.experiments"),
+      value: summary.experimentsTotal,
+      to: langHref(language, "experiments"),
+    },
   ];
 
   return (
     <section>
       <SectionTitle
         hint={
-          <Link to="/progress" className="hover:text-[var(--text)]">
-            details →
+          <Link to={langHref(language, "progress")} className="hover:text-[var(--text)]">
+            {t(language, "label.details")}
           </Link>
         }
       >
-        Progress
+        {t(language, "nav.progress")}
       </SectionTitle>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {items.map((item) => (
@@ -36,9 +56,11 @@ export function ProgressOverview() {
         ))}
       </div>
       <p className="mt-3 font-mono text-[11px] text-[var(--faint)]">
-        {summary.conceptsCompleted} mastered · {summary.conceptsLearning} learning ·{" "}
-        {summary.experimentsCompleted} experiments completed · {summary.questionsResolved}
-        /{summary.questionsAsked} questions resolved
+        {summary.conceptsCompleted} {t(language, "label.completed").toLowerCase()} ·{" "}
+        {summary.conceptsLearning} {t(language, "label.status.learning")} ·{" "}
+        {summary.experimentsCompleted} {t(language, "label.expsPlural")} ·{" "}
+        {summary.questionsResolved}/{summary.questionsAsked}{" "}
+        {t(language, "label.resolved").toLowerCase()}
       </p>
     </section>
   );

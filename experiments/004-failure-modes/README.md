@@ -3,6 +3,7 @@ id: 004-failure-modes
 number: 4
 title: Failure Modes On Purpose
 status: completed
+revision: 1
 language:
   - python
 concepts:

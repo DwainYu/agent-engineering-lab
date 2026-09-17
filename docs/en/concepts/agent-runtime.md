@@ -1,6 +1,8 @@
 ---
 id: agent-runtime
 title: Agent Runtime
+language: en
+revision: 1
 category: runtime
 status: planned
 progress: 0

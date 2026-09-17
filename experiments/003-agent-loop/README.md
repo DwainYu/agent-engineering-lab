@@ -3,6 +3,7 @@ id: 003-agent-loop
 number: 3
 title: Mini Agent Loop
 status: completed
+revision: 1
 language:
   - python
 concepts:

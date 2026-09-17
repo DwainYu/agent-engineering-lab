@@ -3,7 +3,7 @@
     "project": "Agent Engineering Lab",
     "version": "0.1.0",
     "totalDays": 30,
-    "updatedAt": "2026-09-13"
+    "updatedAt": "2026-09-17"
   },
   "summary": {
     "totalDays": 30,
@@ -18,7 +18,7 @@
     "experimentsCompleted": 5,
     "experimentsLearning": 0,
     "experimentsTotal": 5,
-    "comparisonsTotal": 1,
+    "comparisonsTotal": 2,
     "questionsAsked": 3,
     "questionsResolved": 1,
     "questionsOpen": 2,
@@ -41,7 +41,35 @@
         "concepts": 2,
         "experiments": 0
       }
-    ]
+    ],
+    "languages": {
+      "en": {
+        "completedDays": 1,
+        "totalDays": 3,
+        "conceptsCompleted": 0,
+        "conceptsTotal": 5,
+        "experimentsCompleted": 5,
+        "experimentsTotal": 5,
+        "comparisons": 2,
+        "questions": 3
+      },
+      "zh": {
+        "completedDays": 1,
+        "totalDays": 2,
+        "conceptsCompleted": 0,
+        "conceptsTotal": 5,
+        "experimentsCompleted": 5,
+        "experimentsTotal": 5,
+        "comparisons": 2,
+        "questions": 3
+      }
+    },
+    "translation": {
+      "synced": 14,
+      "outdated": 0,
+      "missing": 1,
+      "total": 15
+    }
   },
   "skills": [
     {
@@ -154,28 +182,50 @@
   ],
   "days": [
     {
+      "id": "day-01",
       "day": 1,
+      "english": {
+        "path": "docs/en/daily/day-01.md",
+        "revision": 1
+      },
+      "chinese": {
+        "path": "docs/zh/daily/day-01.md",
+        "sourceRevision": 1,
+        "status": "synced"
+      },
       "title": "What An Agent Actually Is",
       "status": "completed",
       "phase": "fundamentals",
-      "date": "2026-09-10",
-      "path": "docs/daily/day-01.md"
+      "date": "2026-09-10"
     },
     {
+      "id": "day-02",
       "day": 2,
+      "english": {
+        "path": "docs/en/daily/day-02.md",
+        "revision": 1
+      },
+      "chinese": {
+        "path": "docs/zh/daily/day-02.md",
+        "sourceRevision": 1,
+        "status": "synced"
+      },
       "title": "LLM API, Streaming And Usage",
       "status": "learning",
       "phase": "fundamentals",
-      "date": "2026-09-11",
-      "path": "docs/daily/day-02.md"
+      "date": "2026-09-11"
     },
     {
+      "id": "day-03",
       "day": 3,
+      "english": {
+        "path": "docs/en/daily/day-03.md",
+        "revision": 1
+      },
       "title": "Agent State And Termination",
       "status": "planned",
       "phase": "runtime",
-      "date": "2026-09-12",
-      "path": "docs/daily/day-03.md"
+      "date": "2026-09-12"
     }
   ],
   "questions": {
@@ -188,14 +238,14 @@
         "status": "learning",
         "question": "Why does an Agent need a State object when the message transcript already contains everything the model can see?",
         "concept": "agent-runtime",
-        "path": "docs/questions/open.md"
+        "path": "docs/en/questions/open.md"
       },
       {
         "slug": "Q002",
         "status": "learning",
         "question": "When a streamed tool call's `arguments` arrive in fragments across SSE chunks, who reassembles them, and what happens if a chunk is lost?",
         "concept": "llm-api",
-        "path": "docs/questions/open.md"
+        "path": "docs/en/questions/open.md"
       },
       {
         "slug": "Q001",
@@ -203,7 +253,7 @@
         "question": "Why does a Workflow not need a loop, while an Agent always does?",
         "explanation": "A Workflow's step count is known when I write the code, so control flow can live in my `for` / `if`. An Agent's step count depends on what the intermediate results say, so the branch has to move into the model's output — and something outside the model has to keep going until the model stops asking. What changed: I stopped trying to \"make the model decide\" through prompt wording and started treating the exit test as runtime code that I own.",
         "concept": "agent",
-        "path": "docs/questions/resolved.md"
+        "path": "docs/en/questions/resolved.md"
       }
     ]
   }

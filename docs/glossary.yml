@@ -1,0 +1,157 @@
+# docs/glossary.yml
+#
+# Terminology contract for the English / Chinese knowledge base.
+#
+# `preferred` is the term kept in English in BOTH language trees. Identifiers,
+# API names, class names, function names, file names and code are never
+# translated; `zh` is how the term may be glossed on first occurrence, or how it
+# is spoken about in Chinese prose.
+#
+# The content engine does not translate anything. This file is a contract:
+# the bilingual-learning skill reads it, the validator checks that files exist.
+
+terms:
+  Agent:
+    preferred: Agent
+    zh: Agent / 智能体
+
+  Agent Loop:
+    preferred: Agent Loop
+    zh: Agent 执行循环
+
+  Agent Runtime:
+    preferred: Agent Runtime
+    zh: Agent 运行时
+
+  Tool:
+    preferred: Tool
+    zh: Tool / 工具
+
+  Tool Calling:
+    preferred: Tool Calling
+    zh: 工具调用
+
+  Tool Call:
+    preferred: Tool Call
+    zh: 工具调用请求
+
+  State:
+    preferred: State
+    zh: State / 状态
+
+  Context:
+    preferred: Context
+    zh: Context / 上下文
+
+  Context Engineering:
+    preferred: Context Engineering
+    zh: 上下文工程
+
+  Context Window:
+    preferred: Context Window
+    zh: 上下文窗口
+
+  Memory:
+    preferred: Memory
+    zh: Memory / 记忆
+
+  Session:
+    preferred: Session
+    zh: Session / 会话
+
+  Checkpoint:
+    preferred: Checkpoint
+    zh: Checkpoint / 检查点
+
+  Streaming:
+    preferred: Streaming
+    zh: Streaming / 流式输出
+
+  Message:
+    preferred: Message
+    zh: Message / 消息
+
+  Transcript:
+    preferred: Transcript
+    zh: Transcript / 对话记录
+
+  Provider:
+    preferred: Provider
+    zh: Provider / 模型服务提供方
+
+  Embedding:
+    preferred: Embedding
+    zh: Embedding / 向量化
+
+  RAG:
+    preferred: RAG
+    zh: RAG / 检索增强生成
+
+  Reranker:
+    preferred: Reranker
+    zh: Reranker / 重排序
+
+  Evaluation:
+    preferred: Evaluation
+    zh: Evaluation / 评测
+
+  Tracing:
+    preferred: Tracing
+    zh: Tracing / 链路追踪
+
+  Observability:
+    preferred: Observability
+    zh: Observability / 可观测性
+
+  Workflow:
+    preferred: Workflow
+    zh: Workflow / 工作流
+
+  Guardrail:
+    preferred: Guardrail
+    zh: Guardrail / 护栏
+
+  Budget:
+    preferred: Budget
+    zh: Budget / 预算
+
+  LangGraph:
+    preferred: LangGraph
+    zh: LangGraph
+
+  FastAPI:
+    preferred: FastAPI
+    zh: FastAPI
+
+  Milvus:
+    preferred: Milvus
+    zh: Milvus
+
+  Neo4j:
+    preferred: Neo4j
+    zh: Neo4j
+
+# Status vocabulary used by frontmatter `status:` and the UI label maps.
+# Translating the UI never changes these ids.
+statuses:
+  planned:
+    en: Planned
+    zh: 计划中
+  learning:
+    en: Learning
+    zh: 学习中
+  completed:
+    en: Completed
+    zh: 已完成
+
+# Translation sync states produced by scripts/lib/translation.ts.
+translation:
+  synced:
+    en: Synced
+    zh: 已同步
+  outdated:
+    en: Outdated
+    zh: 待更新
+  missing:
+    en: Missing
+    zh: 待翻译

@@ -1,6 +1,8 @@
 ---
 id: tool-calling
 title: Tool Calling
+language: en
+revision: 1
 category: tools
 status: learning
 progress: 35

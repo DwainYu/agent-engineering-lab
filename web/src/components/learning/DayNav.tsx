@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import { dayByNumber } from "../../lib/content";
+import { langHref, useLanguage } from "../../lib/language";
+import { t } from "../../lib/strings";
 
 function Item({
   to,
@@ -12,6 +14,8 @@ function Item({
   title?: string;
   align: "left" | "right";
 }) {
+  const { language } = useLanguage();
+
   const inner = (
     <>
       <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--faint)]">
@@ -24,7 +28,7 @@ function Item({
             : "text-[var(--faint)] line-through decoration-[var(--line)]"
         }`}
       >
-        {title ?? "Nothing yet"}
+        {title ?? t(language, "label.nothing")}
       </span>
     </>
   );
@@ -50,22 +54,23 @@ function Item({
 }
 
 export function DayNav({ day }: { day: number }) {
-  const previous = dayByNumber(String(day - 1));
-  const next = dayByNumber(String(day + 1));
+  const { language } = useLanguage();
+  const previous = dayByNumber(language, String(day - 1));
+  const next = dayByNumber(language, String(day + 1));
   const maxDay = Math.max(0, ...[day, previous?.day ?? 0, next?.day ?? 0]);
 
   return (
     <nav className="mt-10 flex items-stretch justify-between gap-3 border-t border-[var(--line)] pt-6">
       <Item
-        to={previous ? `/learn/day/${previous.day}` : null}
-        label="← Previous Day"
-        title={previous ? `Day ${previous.day} · ${previous.title}` : undefined}
+        to={previous ? langHref(language, `learn/day/${previous.day}`) : null}
+        label={t(language, "day.previous")}
+        title={previous ? t(language, "day.entry", { day: previous.day, title: previous.title }) : undefined}
         align="left"
       />
       <Item
-        to={next && day < maxDay ? `/learn/day/${next.day}` : null}
-        label={next ? "Next Day →" : "Next Day →"}
-        title={next ? `Day ${next.day} · ${next.title}` : "planned"}
+        to={next && day < maxDay ? langHref(language, `learn/day/${next.day}`) : null}
+        label={t(language, "day.next")}
+        title={next ? t(language, "day.entry", { day: next.day, title: next.title }) : t(language, "label.planned")}
         align="right"
       />
     </nav>

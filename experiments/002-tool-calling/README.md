@@ -3,6 +3,7 @@ id: 002-tool-calling
 number: 2
 title: One Tool Call, Round Trip
 status: completed
+revision: 1
 language:
   - python
 concepts:

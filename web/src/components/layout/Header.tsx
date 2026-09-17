@@ -1,27 +1,33 @@
 import { useState } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
-import { assistOnPath, site, summary } from "../../lib/content";
-import { useReadingMode, type ReadingMode } from "../../lib/reading";
+import { Link, NavLink } from "react-router-dom";
+import { site, summary } from "../../lib/content";
 import { githubRepoUrl } from "../../lib/paths";
+import {
+  LANGUAGES,
+  LANGUAGE_LABEL,
+  langHref,
+  useLanguage,
+} from "../../lib/language";
+import { t, type StringKey } from "../../lib/strings";
 
 interface NavItem {
-  to: string;
-  label: string;
+  path: string;
+  key: StringKey;
   end?: boolean;
 }
 
 const NAV: NavItem[] = [
-  { to: "/", label: "Home", end: true },
-  { to: "/learn", label: "Learn" },
-  { to: "/concepts", label: "Concepts" },
-  { to: "/experiments", label: "Experiments" },
-  { to: "/projects", label: "Projects" },
-  { to: "/progress", label: "Progress" },
-  { to: "/about", label: "About" },
+  { path: "", key: "nav.home", end: true },
+  { path: "learn", key: "nav.learn" },
+  { path: "concepts", key: "nav.concepts" },
+  { path: "experiments", key: "nav.experiments" },
+  { path: "projects", key: "nav.projects" },
+  { path: "progress", key: "nav.progress" },
+  { path: "about", key: "nav.about" },
 ];
 
 /** The three destinations that stay visible on a phone (§24). */
-const MOBILE_PRIMARY = new Set(["/", "/learn", "/progress"]);
+const MOBILE_PRIMARY = new Set(["", "learn", "progress"]);
 
 function linkClass({ isActive }: { isActive: boolean }): string {
   return `whitespace-nowrap px-2 py-1 font-mono text-[12px] transition-colors ${
@@ -30,48 +36,43 @@ function linkClass({ isActive }: { isActive: boolean }): string {
 }
 
 /**
- * Reading mode, not a language switch: `中文辅助` reveals the Chinese
- * assistance blocks a note already contains. The control is absent when the
- * current document has none, so it can never promise text that is not there.
+ * `EN | 中文` is a navigation, not a local mode flag: it keeps the current
+ * document id and only swaps the language prefix. The URL stays the source of
+ * truth, so the link can be opened in a new tab or sent to someone else.
  */
-function ReadingModeSwitch() {
-  const { pathname } = useLocation();
-  const { mode, setMode } = useReadingMode();
-  if (!assistOnPath(pathname)) return null;
-
-  const options: { id: ReadingMode; label: string; title: string }[] = [
-    { id: "en", label: "EN", title: "English only" },
-    { id: "assist", label: "中文辅助", title: "Reveal Chinese assistance" },
-  ];
+function LanguageSwitch() {
+  const { language, hrefFor, remember } = useLanguage();
 
   return (
     <div
       role="group"
-      aria-label="阅读模式 Reading mode"
+      aria-label={t(language, "lang.switch")}
       className="flex items-center rounded-md border border-[var(--line)] p-0.5"
     >
-      {options.map((option) => {
-        const active = mode === option.id;
+      {LANGUAGES.map((option) => {
+        const active = language === option;
         return (
-          <button
-            key={option.id}
-            type="button"
-            title={option.title}
-            aria-pressed={active}
-            onClick={() => setMode(option.id)}
+          <Link
+            key={option}
+            to={hrefFor(option)}
+            onClick={() => remember(option)}
+            lang={option}
+            title={LANGUAGE_LABEL[option]}
+            aria-current={active ? "true" : undefined}
             className={`rounded px-1.5 py-0.5 font-mono text-[11px] transition-colors ${
               active
                 ? "bg-[var(--elevate)] text-[var(--text)]"
                 : "text-[var(--faint)] hover:text-[var(--text)]"
             }`}
           >
-            {option.label}
-          </button>
+            {LANGUAGE_LABEL[option]}
+          </Link>
         );
       })}
     </div>
   );
 }
+
 
 export function Header({
   theme,
@@ -81,11 +82,16 @@ export function Header({
   onToggleTheme: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { language } = useLanguage();
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--line)] bg-[var(--bg)]/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
-        <Link to="/" className="flex items-center gap-2" onClick={() => setOpen(false)}>
+        <Link
+          to={langHref(language)}
+          className="flex items-center gap-2"
+          onClick={() => setOpen(false)}
+        >
           <span className="grid size-6 place-items-center rounded border border-[var(--line)] bg-[var(--surface)] font-mono text-[11px] font-bold text-[var(--accent)]">
             A
           </span>
@@ -96,17 +102,22 @@ export function Header({
 
         <nav className="ml-4 hidden items-center gap-1 lg:flex">
           {NAV.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.end} className={linkClass}>
-              {item.label}
+            <NavLink
+              key={item.key}
+              to={langHref(language, item.path)}
+              end={item.end}
+              className={linkClass}
+            >
+              {t(language, item.key)}
             </NavLink>
           ))}
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
           <span className="hidden font-mono text-[11px] text-[var(--faint)] sm:inline">
-            Day {summary.currentDay} / {summary.totalDays}
+            {t(language, "day.counter", { current: summary.currentDay, total: summary.totalDays })}
           </span>
-          <ReadingModeSwitch />
+          <LanguageSwitch />
           <a
             href={githubRepoUrl(site.repo)}
             target="_blank"
@@ -140,8 +151,8 @@ export function Header({
           <div className="grid gap-1 sm:grid-cols-2">
             {NAV.map((item) => (
               <NavLink
-                key={item.to}
-                to={item.to}
+                key={item.path}
+                to={langHref(language, item.path)}
                 end={item.end}
                 onClick={() => setOpen(false)}
                 className={({ isActive }) =>
@@ -152,7 +163,7 @@ export function Header({
                   }`
                 }
               >
-                {item.label}
+                {t(language, item.key)}
               </NavLink>
             ))}
           </div>
@@ -164,11 +175,13 @@ export function Header({
 
 /** Secondary bar shown on small screens: the daily-drivers only. */
 export function MobileNav() {
+  const { language } = useLanguage();
+
   return (
     <div className="flex items-center gap-1 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-1.5 lg:hidden">
-      {NAV.filter((item) => MOBILE_PRIMARY.has(item.to)).map((item) => (
-        <NavLink key={item.to} to={item.to} end={item.end} className={linkClass}>
-          {item.label}
+      {NAV.filter((item) => MOBILE_PRIMARY.has(item.path)).map((item) => (
+        <NavLink key={item.path} to={langHref(language, item.path)} end={item.end} className={linkClass}>
+          {t(language, item.key)}
         </NavLink>
       ))}
     </div>

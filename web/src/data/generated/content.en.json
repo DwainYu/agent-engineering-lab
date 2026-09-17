@@ -1,0 +1,591 @@
+{
+  "language": "en",
+  "days": [
+    {
+      "id": "day-01",
+      "language": "en",
+      "revision": 1,
+      "kind": "day",
+      "slug": "day-01",
+      "path": "docs/en/daily/day-01.md",
+      "day": 1,
+      "title": "What An Agent Actually Is",
+      "date": "2026-09-10",
+      "status": "completed",
+      "phase": "fundamentals",
+      "topics": [
+        "agent",
+        "agent-loop",
+        "tool-calling"
+      ],
+      "concepts": [
+        "agent",
+        "agent-loop",
+        "tool-calling",
+        "llm-api"
+      ],
+      "experiments": [
+        "001-basic-llm",
+        "002-tool-calling",
+        "003-agent-loop",
+        "004-failure-modes",
+        "005-context-trim"
+      ],
+      "sources": [
+        "https://www.anthropic.com/engineering/building-effective-agents"
+      ],
+      "difficulty": "easy",
+      "estimatedTime": "3h",
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "productionProject": {
+        "repo": "tft-agent-set17",
+        "path": "api/agent/graph.py"
+      },
+      "body": "# Day 01 — What An Agent Actually Is\n\n## Today's Goal\n\nBe able to say what an Agent is without using the word \"autonomous\" — and\nprove it by running one model turn that ends in a tool call and a real answer.\n\n## What I Learned\n\nThe difference between a **Workflow** and an **Agent** is who holds the\ncontrol flow.\n\n```python\n# Workflow: I write the steps.\ndef summarize_topic(topic: str) -> str:\n    docs = retrieve(topic)          # step 1\n    return complete(prompt(docs))   # step 2\n\n# Agent: the model writes the steps, at runtime.\ndef agent(goal: str) -> str:\n    messages = [{\"role\": \"user\", \"content\": goal}]\n    while True:\n        reply = complete(messages, tools=TOOLS)\n        if not reply.tool_calls:\n            return reply.content\n        messages.append(as_message(reply))\n        messages.append(tool_results(reply.tool_calls))\n```\n\nThat `while True` is the whole idea. Everything else in this repository —\nstate, context, memory, session, evaluation — exists because that loop is\nfragile in specific, predictable ways.\n\nThree things I can now separate:\n\n1. **The model** only ever produces text: an answer, or a request to call a\n   tool. It executes nothing.\n2. **The runtime** (my code) executes tools, appends results to the\n   transcript, and decides whether to run another turn.\n3. **The contract** between them is the message list plus the tool schemas.\n   That contract is the only thing the model \"sees\".\n\nAnthropic's framing matches this: agents are \"typically just LLMs using\ntools in a loop\", and the recommendation is to find the simplest solution —\nworkflows are preferred over agents wherever the task can be decomposed\n\nahead of time.\n\n## Source Code Analysis\n\n`experiments/002-tool-calling/` is the smallest observable version of the\nloop. One turn, no `while`. Output from the scripted provider:\n\n```text\n 1. system     'You are an agent that finishes tasks step by step…'\n 2. user       'What is (17 + 28) * 4? Use the calculator tool…'\n 3. assistant  tool_calls=calculator({'expression': '(17 + 28) * 4'})   content=''\n 4. tool       '180'\n 5. assistant '(17 + 28) * 4 = 180.'\n```\n\nTwo details about the API contract that only matter when you write the client\nyourself:\n\n- A tool call is a **finish reason**, not a message type. `finish_reason:\n\"tool_calls\"` is how the runtime knows to continue instead of stopping.\n- Text is empty on a tool-call turn. A runtime that assumes text and branches\n  on \"empty answer\" ends the loop before the tool ever runs.\n\n## What I Didn't Understand\n\n- Why a **State** object is needed when the message list already carries\n  everything. My guess: because the loop needs decisions (which node runs\n  next) that are not conversation. Day 03 should answer this.\n- How to stop a loop that keeps calling tools. I currently only have\n  `max_turns`, which is a clamp, not a solution.\n  _(Answered later the same day by Experiment 004: clamp the shape of the\n  request, not just the number of turns — a repeat guard on\n  `(tool, arguments)` refuses the third identical call and hands the model an\n  observation it can act on.)_\n\n## Questions Asked to the Model\n\n### Question\n\n> If a Workflow can do the same thing, why does the Agent loop exist at all?\n\n### What I Learned\n\nBecause a Workflow needs the step count known at write-time. Any task where\n\"how many steps\" depends on what the intermediate results say (does this\ndocument answer the question, do I need to look again?) cannot be written as\na fixed chain — the branch has to move from my `if` into the model's output.\n\nThe trade is explicit: flexibility is bought with control. That is why\nevaluation, budgets and tracing show up in every production Agent design —\nthey are the compensating controls, not decoration.\n\n## Experiment\n\nThe plan was two notebooks. What actually happened is that the plan needed a\nruntime to run against, so `tft-agent-set18` got written today as well: five\nmodules (`messages`, `provider`, `tools`, `loop`, `context`, `trace`), five\nexperiments, 28 unittest cases, standard library only.\n\n- `experiments/001-basic-llm/` — one model turn, no tools\n- `experiments/002-tool-calling/` — one tool round trip\n- `experiments/003-agent-loop/` — four turns carrying state through tools\n- `experiments/004-failure-modes/` — six ways a run ends badly\n- `experiments/005-context-trim/` — what the model receives when history grows\n\nCode: `tft-agent-set18/agent/` and `tft-agent-set18/experiments/`.\n\nTwo answers I came in without and left with:\n\n- **Stopping a stuck loop** is not `max_turns`. It is a repeat guard on\n  `(tool, arguments)` — the third identical call is refused with an\n  observation, which gives the model a chance to change approach _inside_ the\n  budget.\n- **Context is the real budget.** The four-turn run ended with nine messages,\n  each turn re-sending all of them; at a 900-token cap the runtime dropped 40\n  history messages down to 18 and still answered correctly, because the fact it\n  needed lived in a tool, not in the prompt.\n\n## My Own Explanation\n\nAn Agent is a `while` loop around a text model that is allowed to ask for\nhelp. The model never does anything; it only says what it wants done. My job\nas the engineer is to (a) give it a small, honest set of tools, (b) always\ngive the result back in the transcript, and (c) decide when the loop is\nover — because the model will not reliably decide that for me.\n\n## Mistakes / Problems\n\nI first wrote the tool schema with only `name` and `description`, no\n`parameters`. The model then invented argument keys. Schema validity is not\na nicety — it is the interface.\n\n## Connection to TFT Agent\n\nIn Set 17 the equivalent is `api/agent/graph.py`. Reading it today I can\npoint at the exact lines that are \"the loop\" and the lines that are LangGraph\nmachinery — previously it was one undifferentiated block to me.\n\n## Key Takeaways\n\n- Workflows are code-written steps; Agents are model-written steps.\n- The loop condition is the real product decision.\n- A tool call is text plus a finish reason; execution is always mine.\n- Simplicity is the goal: if the steps are known, do not build an Agent.\n- Every failure mode has to return as text; an exception loses the run, an\n  observation keeps it recoverable.\n- Durable state belongs in tools, because trimming will delete it from the\n  prompt eventually.\n\n## Verification\n\nI can now explain:\n\n- [x] What an Agent Loop is\n- [x] Why tools create a loop\n- [x] How tool results return to the model\n- [x] When the loop terminates\n- [x] How a stuck loop is refused (repeat guard, Experiment 004)\n- [x] What trimming costs, and what survives it (Experiment 005)\n- [ ] Why State is separate from Message (Day 03)\n\n## Next\n\nDay 02 — LLM API: streaming, usage and the failure modes of the client. First\naction there: run `e01..e05 --real` against a live endpoint, so token accounting\nstops being a scripted number. (Done on 2026-09-12 against ModelScope\nAPI-Inference; the retry/backoff path still has not met a real 429.)",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/daily/day-01.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "day-02",
+      "language": "en",
+      "revision": 1,
+      "kind": "day",
+      "slug": "day-02",
+      "path": "docs/en/daily/day-02.md",
+      "day": 2,
+      "title": "LLM API, Streaming And Usage",
+      "date": "2026-09-11",
+      "status": "learning",
+      "phase": "fundamentals",
+      "topics": [
+        "llm-api",
+        "streaming",
+        "tokens"
+      ],
+      "concepts": [
+        "llm-api",
+        "agent-loop"
+      ],
+      "experiments": [
+        "001-basic-llm"
+      ],
+      "sources": [],
+      "difficulty": "easy",
+      "estimatedTime": "2h",
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/provider.py"
+      },
+      "body": "# Day 02 — LLM API, Streaming And Usage\n\n## Today's Goal\n\nWrite the LLM client myself: request, response, usage accounting, streaming\ndeltas, retry on 429 — so that `agent/provider.py` in Set 18 is code I understand\nrather than code I borrowed.\n\n## What I Learned\n\nThe scripted numbers had to stop being the evidence, so today the whole runtime\nran against a live endpoint: ModelScope API-Inference (魔搭社区) with\n`Qwen/Qwen3.8-Flash-Next`, replacing the DeepSeek plan.\n\n- The switch was one file. `agent/provider.py` now reads `MODELSCOPE_API_KEY` /\n  `MODELSCOPE_BASE_URL` and sends an `extra_body` for endpoint-specific knobs\n  (`enable_thinking: false`, `max_tokens: 1024`). The loop, the tools and the\n  experiments did not change — which is the payoff of keeping transport out of\n  `loop.py`.\n- Usage became real, and it is mostly schemas: the same two messages cost 37\n  prompt tokens without `tools` and 501 with four tool definitions\n  (`experiments/001-basic-llm/`). Tool definitions outweigh dialogue.\n- At `temperature: 0` the live model reproduced Experiment 002's trace four\n  times in a row — same tool call, same 1 205 tokens, only the phrasing moved.\n  That repeatability is what makes `ScriptedProvider` an honest stand-in.\n- Experiment 005 stopped being tidy. With the same trimmed context, one run\n  answered honestly that it could not confirm the figure, the next never\n  converged and ended `stop_reason: max-turns` with an empty answer. Trimming\n  does not only cost tokens, it removes the premise the model was reasoning\n  from, and the budget is what makes that visible instead of silent.\n- A real observability hole: `calls` lived on `ScriptedProvider`, so the live\n  run printed \"0 messages actually sent\". Recording what was sent now belongs to\n  the `Provider` interface, not to one implementation.\n- Experiment 004 stays scripted on purpose. A failure catalogue has to\n  reproduce; a live model instead invents failures nobody scripted — like\n  probing four note keys the trim had just erased.\n\nStreaming is still untouched: `provider.py` has no SSE path, and no 429 has\narrived, so backoff is still code I have read but not met.\n\n## What I Didn't Understand\n\n- How to reassemble a streamed tool call whose `arguments` arrive in\n  fragments across SSE chunks.\n- Why two other models on the same endpoint (`deepseek-ai/DeepSeek-V4-Flash-0731`,\n  `meituan-longcat/LongCat-Flash-Lite`) replied to `say OK` with `content: null`\n  while Qwen answered plainly. Not chased — the runtime needs one model that\n  answers, and this one does.\n\n## Experiment\n\nSame five scripts, `--real`, against ModelScope:\n\n```bash\nexport MODELSCOPE_API_KEY=***                     # ModelScope SDK token\npython3 experiments/e01_single_turn.py --real\npython3 experiments/e02_tool_calling.py --real    # four runs, same result\npython3 experiments/e03_agent_loop.py --real\npython3 experiments/e05_context_trim.py --real     # twice, twice differently\n```\n\nReal numbers are written into the notebooks, not replacing the scripted ones:\n\n- `experiments/001-basic-llm/` — usage, and the schema cost measurement\n- `experiments/002-tool-calling/` — one tool round trip on a live model\n- `experiments/003-agent-loop/` — 8 scripted tokens vs 2 698 live ones\n- `experiments/004-failure-modes/` — why this one stays scripted\n- `experiments/005-context-trim/` — convergence is no longer guaranteed\n\n## My Own Explanation\n\n_Pending._\n\n## Key Takeaways\n\n_Pending._\n\n## Next\n\nDay 03 — Agent State: why the message list is not enough.",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/daily/day-02.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "day-03",
+      "language": "en",
+      "revision": 1,
+      "kind": "day",
+      "slug": "day-03",
+      "path": "docs/en/daily/day-03.md",
+      "day": 3,
+      "title": "Agent State And Termination",
+      "date": "2026-09-12",
+      "status": "planned",
+      "phase": "runtime",
+      "topics": [
+        "state",
+        "agent-loop"
+      ],
+      "concepts": [
+        "agent-runtime",
+        "agent-loop"
+      ],
+      "experiments": [],
+      "sources": [],
+      "difficulty": "medium",
+      "estimatedTime": "3h",
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/context.py"
+      },
+      "body": "# Day 03 — Agent State And Termination\n\n## Today's Goal\n\nAnswer the question left open in Day 01: why does an Agent need a State\nobject when the message transcript already holds the conversation?\n\n## What I Learned\n\n_Planned — write after the experiment runs._\n\n## What I Didn't Understand\n\n_Planned._\n\n## Experiment\n\nPlanned: `experiments/003-state/`\n\n## My Own Explanation\n\n_Planned._\n\n## Key Takeaways\n\n_Planned._\n\n## Next\n\nDay 04 — Events: making the loop observable.",
+      "translation": {
+        "zh": {
+          "status": "missing"
+        }
+      }
+    }
+  ],
+  "concepts": [
+    {
+      "id": "agent-loop",
+      "language": "en",
+      "revision": 1,
+      "kind": "concept",
+      "slug": "agent-loop",
+      "path": "docs/en/concepts/agent-loop.md",
+      "title": "Agent Loop",
+      "category": "runtime",
+      "status": "learning",
+      "progress": 60,
+      "summary": "The repeated cycle of model turn, tool execution and result injection, ending when the model answers or a budget stops it.",
+      "prerequisites": [
+        "agent",
+        "tool-calling",
+        "llm-api"
+      ],
+      "related": [
+        "agent-runtime"
+      ],
+      "experiments": [
+        "002-tool-calling"
+      ],
+      "days": [],
+      "tags": [],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "body": "# Agent Loop\n\n## Definition\n\nThe Agent Loop is the cycle:\n\n```text\ntranscript → model → (tool_calls?) → execute → results → transcript → ...\n```\n\nwith two exits: the model produced a final answer, or the runtime refused to\ncontinue (turn / token / time / cost budget).\n\n## Why\n\nThe model is stateless and single-shot. Any multi-step behaviour therefore\nhas to come from the caller re-invoking it with a longer transcript. The loop\nis what turns one stateless function into an apparently persistent worker.\n\n## Minimal Implementation\n\nThe loop is five lines, but the interesting part is the exit test. The model\nsignals \"I am done\" by **not** asking for a tool. That is a weak signal: it\ncan also mean \"I am confused\". A robust runtime adds:\n\n- a hard `max_turns`\n- a repeated-call detector (same tool, same args)\n- a token budget for the transcript itself\n\n```python\nseen: Counter[tuple[str, str]] = Counter()\nfor _ in range(max_turns):\n    reply = llm.complete(messages, tools=tools)\n    if not reply.tool_calls:\n        return reply.content\n    key = (reply.tool_calls[0].name, reply.tool_calls[0].arguments)\n    if (seen[key] := seen[key] + 1) >= 3:\n        raise Stuck(key)\n    ...\n```\n\n## Real Project\n\n- Training: `tft-agent-set18/agent/loop.py`\n- Production: `tft-agent-set17/api/agent/graph.py` — the loop becomes a\n  conditional edge between nodes.\n\n## Common Problems\n\n- Ending on empty content and never telling the user why.\n- Injecting tool results as `user` messages, which teaches the model to\n  imitate tool output.\n- No observability, so a stuck loop looks identical to a working one.",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/concepts/agent-loop.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "agent-runtime",
+      "language": "en",
+      "revision": 1,
+      "kind": "concept",
+      "slug": "agent-runtime",
+      "path": "docs/en/concepts/agent-runtime.md",
+      "title": "Agent Runtime",
+      "category": "runtime",
+      "status": "planned",
+      "progress": 0,
+      "summary": "Everything that is not the model: state, message history, event stream, budgets, and the scheduling of tool execution.",
+      "prerequisites": [
+        "agent-loop"
+      ],
+      "related": [
+        "agent-loop"
+      ],
+      "experiments": [],
+      "days": [],
+      "tags": [],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/"
+      },
+      "body": "# Agent Runtime\n\n## Definition\n\nThe **Agent Runtime** is the host process around the model: it owns state,\nthe message transcript, event emission, budgets and tool scheduling.\n\n## Why\n\nThe loop is easy; running it many times, on many concurrent users, without\nlosing or duplicating state, is the hard part. That is where frameworks earn\ntheir keep — and where I need to know what they are doing for me.\n\n## Minimal Implementation\n\nTo be filled in on Day 03 / Day 04, when `agent/state.py` and\n`agent/events.py` exist.\n\n## Real Project\n\n- Training: `tft-agent-set18/agent/` — `loop.py` holds the turn, `trace.py` the events.\n- Production: `tft-agent-set17/api/agent/`\n\n## Common Problems\n\n_Open questions I expect to hit:_\n\n- Where does the transcript live if the process restarts?\n- What is the difference between state and session?\n- Which parts of LangGraph replace code I would otherwise write myself?",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/concepts/agent-runtime.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "agent",
+      "language": "en",
+      "revision": 1,
+      "kind": "concept",
+      "slug": "agent",
+      "path": "docs/en/concepts/agent.md",
+      "title": "Agent",
+      "category": "fundamentals",
+      "status": "learning",
+      "progress": 45,
+      "summary": "A program where the model chooses the next step at runtime, inside a loop that a runtime executes.",
+      "source": "https://www.anthropic.com/engineering/building-effective-agents",
+      "prerequisites": [],
+      "related": [
+        "agent-loop",
+        "tool-calling"
+      ],
+      "experiments": [
+        "001-basic-llm",
+        "002-tool-calling"
+      ],
+      "days": [],
+      "tags": [],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "productionProject": {
+        "repo": "tft-agent-set17",
+        "path": "api/agent/graph.py"
+      },
+      "body": "# Agent\n\n## Definition\n\nAn **Agent** is a program in which an LLM decides, at runtime, which step\ncomes next, and a surrounding runtime executes that decision and feeds the\nresult back. Contrast with a **Workflow**, where the sequence of steps is\nfixed in code.\n\n## Why\n\nSome tasks cannot be decomposed ahead of time: the number of steps, and\nwhich step follows, depend on what the previous result said. Writing that\nbranching in `if` statements does not scale, so the branch is moved into the\nmodel's output and the runtime becomes a loop.\n\nThe cost of that trade is control. Every production Agent concern —\nevaluation, budgets, tracing, guardrails — exists to buy control back.\n\n## Minimal Implementation\n\n```python\ndef agent(goal: str, tools: list[Tool], max_turns: int = 8) -> str:\n    messages = [{\"role\": \"user\", \"content\": goal}]\n    for _ in range(max_turns):\n        reply = llm.complete(messages, tools=tools)\n        if not reply.tool_calls:\n            return reply.content or \"\"\n        messages.append(reply.to_message())\n        messages.extend(tools.run(reply.tool_calls))\n    raise Budget(\"max_turns\")\n```\n\nFive parts, and only five: transcript, tool schemas, executor, loop\ncondition, budget.\n\n## Real Project\n\n- Training: `tft-agent-set18/agent/loop.py` — this minimal loop.\n- Production: `tft-agent-set17/api/agent/graph.py` — the same loop expressed\n  as a LangGraph state graph, with routing, checkpoints and streaming.\n\n## Common Problems\n\n- No termination condition other than \"the model stopped answering\".\n- Tool results never written back into the transcript, so the model repeats\n  the same call.\n- Too many tools: selection accuracy drops before capability rises.\n- Treating the Agent as a hammer, so simple two-step tasks get a loop.",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/concepts/agent.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "llm-api",
+      "language": "en",
+      "revision": 1,
+      "kind": "concept",
+      "slug": "llm-api",
+      "path": "docs/en/concepts/llm-api.md",
+      "title": "LLM API",
+      "category": "fundamentals",
+      "status": "learning",
+      "progress": 45,
+      "summary": "The single model turn behind every Agent: messages in, one reply out, plus usage, finish reason and tool calls.",
+      "prerequisites": [],
+      "related": [
+        "agent",
+        "tool-calling"
+      ],
+      "experiments": [
+        "001-basic-llm",
+        "002-tool-calling"
+      ],
+      "days": [],
+      "tags": [],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/provider.py"
+      },
+      "body": "# LLM API\n\n## Definition\n\nOne call to a chat-completions endpoint: a list of messages (plus tool\nschemas, sampling parameters) in, one assistant reply out, with\n`finish_reason` and `usage` attached.\n\n## Why\n\nEverything an Agent does is built on this one primitive repeated. If the\nsingle-turn contract is not understood — what is stateless, what a message\nrole means, where tool calls appear — the loop above it is guesswork.\n\n## Minimal Implementation\n\n```python\npayload = {\n    \"model\": MODEL,\n    \"messages\": [{\"role\": \"user\", \"content\": \"What is an Agent?\"}],\n    \"temperature\": 0,\n}\nrequest = urllib.request.Request(\n    f\"{BASE_URL}/chat/completions\",\n    data=json.dumps(payload).encode(),\n    headers={\n        \"content-type\": \"application/json\",\n        \"authorization\": f\"Bearer {api_key}\",\n    },\n)\ndata = json.loads(urllib.request.urlopen(request, timeout=60).read())\n```\n\nNon-negotiable extras: a timeout, `usage` accounting per turn, and retry with\nbackoff on 429 / 5xx.\n\n## Real Project\n\n- Training: `tft-agent-set18/agent/provider.py` — `OpenAICompatProvider`\n  (ModelScope API-Inference at `https://api-inference.modelscope.cn/v1`, any\n  OpenAI-compatible base URL works) and `ScriptedProvider` behind the same\n  `complete(messages, tools)` interface, so experiments run offline.\n- Production: `tft-agent-set17/api/` — streaming plus provider fallback.\n\n## Measured\n\nNumbers from running the real endpoint on 2026-09-12, not from documentation:\n\n| Measurement                                          | Value                 |\n| ---------------------------------------------------- | --------------------- |\n| Same two messages, no `tools`                         | `prompt_tokens=37`     |\n| Same two messages, four tool schemas                  | `prompt_tokens=501`    |\n| One tool round trip (Experiment 002, 2 turns)         | 1 205 tokens           |\n| Four-turn loop (Experiment 003)                       | 2 698 tokens           |\n| Repeat of Experiment 002 at `temperature: 0`          | 4 runs, identical cost |\n| `usage` fields actually returned                       | prompt / completion / total |\n\nThree consequences for how the runtime is written:\n\n- The schemas, not the conversation, are the biggest fixed cost in a prompt.\n  Offer four tools and every turn pays for them; a tool-count budget is a token\n  budget.\n- Repeatability at `temperature: 0` is what lets a script stand in for a model.\n  It held for the small tasks here; it did not hold for a trimmed, ambiguous\n  task (Experiment 005 answered differently twice).\n- Endpoint-specific knobs belong to the provider constructor (`enable_thinking`,\n  `max_tokens`), never to the loop. An empty `content` with `tool_calls` set is\n  normal; an empty `content` with `finish_reason: stop` is a model answering\n  nothing, and only `usage` plus the finish reason tell those apart.\n\n## Common Problems\n\n- No timeout: a hung request looks like a slow Agent.\n- Ignoring `finish_reason: \"length\"` and treating a truncated answer as final.\n- Reusing one client for interactive and batch traffic, so latency budgets\n  collide.",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/concepts/llm-api.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "tool-calling",
+      "language": "en",
+      "revision": 1,
+      "kind": "concept",
+      "slug": "tool-calling",
+      "path": "docs/en/concepts/tool-calling.md",
+      "title": "Tool Calling",
+      "category": "tools",
+      "status": "learning",
+      "progress": 35,
+      "summary": "A structured request from the model to the runtime: name plus JSON arguments, validated against a schema the model was told about.",
+      "prerequisites": [
+        "agent",
+        "llm-api"
+      ],
+      "related": [
+        "agent-loop"
+      ],
+      "experiments": [
+        "002-tool-calling"
+      ],
+      "days": [],
+      "tags": [],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/tools.py"
+      },
+      "productionProject": {
+        "repo": "tft-agent-set17",
+        "path": "api/agent/tools.py"
+      },
+      "body": "# Tool Calling\n\n## Definition\n\nA **tool** is a JSON schema advertised to the model. \"Tool calling\" is the\nmodel replying with `{\"name\": ..., \"arguments\": \"...\"}` instead of prose, and\n`finish_reason: \"tool_calls\"` marking that reply as \"not finished yet\".\n\n## Why\n\nText output cannot affect the world. Tool calling gives the model a\nside-effect channel without giving it code execution, so the runtime keeps\nthe authority to validate, restrict, and log every effect.\n\n## Minimal Implementation\n\n```python\n@dataclass\nclass Tool:\n    name: str\n    description: str\n    parameters: dict          # JSON Schema\n    fn: Callable[..., str]\n\n    def as_schema(self) -> dict:\n        return {\n            \"type\": \"function\",\n            \"function\": {\n                \"name\": self.name,\n                \"description\": self.description,\n                \"parameters\": self.parameters,\n            },\n        }\n```\n\nExecution is a plain dispatch, and the result must return as a `tool`\nmessage carrying the same `tool_call_id`:\n\n```python\n{\"role\": \"tool\", \"tool_call_id\": call.id, \"content\": json.dumps(output)}\n```\n\n## Real Project\n\n- Training: `tft-agent-set18/agent/tools.py` — registry, argument validation and\n  four tools.\n- Production: `tft-agent-set17/api/agent/tools.py` — the same contract, plus\n  caching and auth-bound tools.\n\n## Common Problems\n\n- Vague descriptions: the model selects tools by reading them, so a bad\n  description is a routing bug.\n- Accepting arguments without validating against the schema before running.\n- Returning raw exceptions as tool output — the model reads them as facts and\n  gets creative. Return a structured error instead.\n- Parallel calls: two writes to the same resource, no ordering guarantee.",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/concepts/tool-calling.md",
+          "sourceRevision": 1
+        }
+      }
+    }
+  ],
+  "experiments": [
+    {
+      "id": "001-basic-llm",
+      "kind": "experiment",
+      "slug": "001-basic-llm",
+      "path": "experiments/001-basic-llm/README.md",
+      "number": 1,
+      "title": "One Model Turn",
+      "status": "completed",
+      "stack": [
+        "python"
+      ],
+      "concepts": [
+        "llm-api",
+        "agent"
+      ],
+      "day": 1,
+      "code": {
+        "path": "experiments/001-basic-llm",
+        "readme": "experiments/001-basic-llm/README.md"
+      },
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/provider.py"
+      },
+      "language": "en",
+      "revision": 1,
+      "body": "# Experiment 001 — One Model Turn\n\n## Goal\n\nCall a chat-completions API with no framework and no helper library — standard\nlibrary only — and print exactly what comes back.\n\n## Architecture\n\n```text\nprompt\n  ↓\nHTTP POST /chat/completions\n  ↓\nchoices[0].message        → text\nchoices[0].finish_reason  → \"stop\"\nusage                     → prompt / completion / total tokens\n```\n\n## What I Learned\n\n- `usage` is the only cost signal there is. If the client does not record it,\n  the Agent has no budget.\n- `finish_reason` is part of the answer, not a diagnostic. `stop` and\n  `length` mean completely different things to the caller.\n- A model turn is stateless: the whole \"conversation\" is me resending the\n  transcript every time.\n\n## Result\n\n```text\n$ python3 experiments/e01_single_turn.py\nprovider      : scripted\ntools offered : 4 (calculator, now, note_get, note_put)\nmessages      : 2\nresponse      : role=assistant tool_calls=0 finish_reason=stop\nusage         : Usage(prompt_tokens=0, completion_tokens=12)\n```\n\nRun on 2026-09-12 against ModelScope API-Inference (魔搭社区), model `Qwen/Qwen3.8-Flash-Next`, `enable_thinking: false`, `max_tokens: 1024`:\n\n```text\n$ python3 experiments/e01_single_turn.py --real\nprovider      : Qwen/Qwen3.8-Flash-Next@https://api-inference.modelscope.cn/v1\ntools offered : 4 (calculator, note_get, note_put, now)\nmessages      : 2\nresponse      : role=assistant tool_calls=0 finish_reason=stop\ncontent       : An LLM agent is a language model that autonomously plans, uses\n                tools, and takes multi-step actions to achieve a goal.\nusage         : Usage(prompt_tokens=501, completion_tokens=26)\n```\n\nTwo things only the live numbers told me:\n\n- **The tool schemas are the prompt.** Same two messages, same endpoint, once\n  with `tools` and once without:\n\n  ```text\n  without tools : prompt_tokens=37\n  with 4 tools  : prompt_tokens=501      (+464, 13.5× the request)\n  ```\n\n  Four hand-written schemas cost more than twenty turns of dialogue would. \"We\n  ran out of context\" is a tool-definition problem before it is a history\n  problem, and the fix is fewer tools, not a bigger window.\n- `completion_tokens` is the answer's length, nothing more. Accounting is only\n  bookkeeping until something decides what to do when the running total crosses\n  a budget — that decision is Day 05's `token_budget`.\n\n## Code\n\nLives in the training project, not here:\n\n- `tft-agent-set18/agent/provider.py` — `ScriptedProvider` (deterministic) and\n  `OpenAICompatProvider` (stdlib HTTP, 429/5xx backoff, usage accounting)\n- `tft-agent-set18/experiments/e01_single_turn.py` — this run\n\n## Next Step\n\nExperiment 002: add one tool and observe what changes in the response.",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/experiments/001-basic-llm.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "002-tool-calling",
+      "kind": "experiment",
+      "slug": "002-tool-calling",
+      "path": "experiments/002-tool-calling/README.md",
+      "number": 2,
+      "title": "One Tool Call, Round Trip",
+      "status": "completed",
+      "stack": [
+        "python"
+      ],
+      "concepts": [
+        "tool-calling",
+        "agent-loop"
+      ],
+      "day": 1,
+      "code": {
+        "path": "experiments/002-tool-calling",
+        "readme": "experiments/002-tool-calling/README.md"
+      },
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/tools.py"
+      },
+      "language": "en",
+      "revision": 1,
+      "body": "# Experiment 002 — One Tool Call, Round Trip\n\n## Goal\n\nMake the model call a tool, execute it, and get back a natural-language\nanswer — in exactly one round trip, with no loop.\n\n## Architecture\n\n```text\nUser\n  ↓\nLLM (tools=[calculator, now, note_put, note_get])\n  ↓\ntool_call  calculator {\"expression\": \"(17 + 28) * 4\"}\n  ↓\nTool (validated args → python function)\n  ↓\ntool result (role=tool, tool_call_id=...)\n  ↓\nLLM\n  ↓\nAnswer\n```\n\n## What I Learned\n\n- A tool call arrives as `message.tool_calls[]` with `arguments` still a\n  **string**. Parsing is my job, and parse failures are the model's fault\n  only in the sense that my schema description was unclear.\n- `content` is `None` on that turn. Any runtime that ends the conversation on\n  \"empty answer\" kills the Agent here.\n- The `tool_call_id` back-reference is mandatory. Without it the model cannot\n  tell which call a result belongs to once there is more than one.\n\n## Result\n\n```text\n$ python3 experiments/e02_tool_calling.py\nanswer        : (17 + 28) * 4 = 180.\nstop reason   : final-answer\nobservations  : 1\n\n 1. system     'You are an agent that finishes tasks step by step…'\n 2. user       'What is (17 + 28) * 4? Use the calculator tool…'\n 3. assistant  tool_calls=calculator({'expression': '(17 + 28) * 4'})\n 4. tool       '180'\n 5. assistant '(17 + 28) * 4 = 180.'\n```\n\nRun on 2026-09-12 against ModelScope API-Inference (魔搭社区), model `Qwen/Qwen3.8-Flash-Next`, `enable_thinking: false`, `max_tokens: 1024`:\n\n```text\n$ python3 experiments/e02_tool_calling.py --real\nanswer        : (17 + 28) * 4 = 180\nstop reason   : final-answer\nturns / tools / tokens : 2 / 1 / 1205\nobservations  : 1\n```\n\nSame message shape as the scripted run — `finish_reason: tool_calls` on turn 1\nwith empty `content`, then a `tool` message, then the answer. I ran it four\ntimes: identical `turns / tools / tokens` every time, same tool call, same\nnumber. The only drift is phrasing — the live answer lost my scripted full stop.\n\nTwo things that follow. First, at `temperature: 0` this endpoint is repeatable\nenough that the script in `ScriptedProvider` is a fair stand-in, which is what\nlets the rest of the experiments stay deterministic. Second, 1 205 prompt tokens\nbought one arithmetic call, because every turn re-sends the schemas measured in\nExperiment 001.\n\nWhat this run does *not* show is a model refusing to use the tool. It has always\ncalled it here, so \"no tool call means done\" is still a signal I have only tested\nwith a script.\n\nThe `calculator` tool is an AST walk, not `eval()` — the model's argument\nstring is untrusted input, so parsing it is also a safety boundary.\n\n## Code\n\n- `tft-agent-set18/agent/tools.py` — registry, required/unexpected argument\n  validation, `calculator`\n- `tft-agent-set18/agent/loop.py` — one round trip inside the loop\n- `tft-agent-set18/experiments/e02_tool_calling.py` — this run\n\n## Next Step\n\nExperiment 003: put this round trip inside a `while` loop and add a budget.",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/experiments/002-tool-calling.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "003-agent-loop",
+      "kind": "experiment",
+      "slug": "003-agent-loop",
+      "path": "experiments/003-agent-loop/README.md",
+      "number": 3,
+      "title": "Mini Agent Loop",
+      "status": "completed",
+      "stack": [
+        "python"
+      ],
+      "concepts": [
+        "agent-loop",
+        "tool-calling",
+        "agent-runtime"
+      ],
+      "day": 1,
+      "code": {
+        "path": "experiments/003-agent-loop",
+        "readme": "experiments/003-agent-loop/README.md"
+      },
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "language": "en",
+      "revision": 1,
+      "body": "# Experiment 003 — Mini Agent Loop\n\n## Goal\n\nRun a multi-step task with a hand-written `while` loop — transcript, tool\nregistry, exit test, budgets — before touching LangGraph.\n\n## Architecture\n\n```text\nmessages = [system, user]\nloop:\n  provider.complete(trim(messages, budget), registry.specs())\n    ├─ tool_calls → invoke each → append tool observations → next turn\n    └─ text only  → final answer, stop\nguards: max_turns · max_tool_calls · repeat_limit\n```\n\n## What I Learned\n\n- The exit test is one line (`if not message.tool_calls`), and it is the only\n  thing standing between a working agent and a `while True`.\n- Context grows **monotonically**: this four-turn run carried nine messages by\n  the end, and every turn re-sent all of them. Step count is cheap; token count\n  is not.\n- \"Memory\" was a tool. `note_put` / `note_get` are the smallest possible thing\n  that lets turn 4 depend on turn 1.\n- A tool result must be appended as a message _in order_. One misplaced\n  observation and the next request stops making sense to the model.\n\n## Result\n\n```text\n$ python3 experiments/e03_agent_loop.py\nanswer        : The order total is 100.0.\nturns         : 4   tool_calls: 3   messages: 9   tokens: 0 (scripted)\nstop_reason   : final-answer\n 1. system    'You are an agent that finishes tasks step by step…'\n 2. user      'Compute 12.5 * 8, store the result under order_total…'\n 3. assistant tool_calls=calculator({'expression': '12.5 * 8'})\n 4. tool      '100.0'\n 5. assistant tool_calls=note_put({'key': 'order_total', 'value': '100.0'})\n 6. tool      'stored order_total'\n 7. assistant tool_calls=note_get({'key': 'order_total'})\n 8. tool      '100.0'\n 9. assistant 'The order total is 100.0.'\n```\n\nThree different tools, four model calls, no framework, 200 lines of loop.\n\n### Against the live endpoint\n\nRun on 2026-09-12 against ModelScope API-Inference (魔搭社区), model `Qwen/Qwen3.8-Flash-Next`, `enable_thinking: false`, `max_tokens: 1024`:\n\n```text\n$ python3 experiments/e03_agent_loop.py --real\nanswer        : The value is **100.0** — computed as 12.5 × 8, stored under the\n                key `order_total`, and confirmed by reading it back.\nturns         : 4\ntool calls    : 3\nmessages      : 9 (grows every turn)\ntokens        : 2698\nstop reason   : final-answer\n```\n\nThe scripted version of this run spends 8 tokens; the live one spends 2 698 on\nthe same four turns. Ratio ≈ 340×, and it is entirely re-sent context: history\nplus the schemas noted in Experiment 001. That is the number that makes\n`token_budget` a first-class control instead of a safety flag.\n\n## Code\n\n- `agent/loop.py` — `Agent.run`, `AgentConfig`, the three guards\n- `agent/tools.py` — registry, validation, `note_put` / `note_get`\n- `experiments/e03_agent_loop.py` — this script\n\n## Next Step\n\nExperiment 004: make it fail on purpose — bad arguments, unknown tools, a\nstuck loop, an exhausted budget, a crashing tool.",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/experiments/003-agent-loop.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "004-failure-modes",
+      "kind": "experiment",
+      "slug": "004-failure-modes",
+      "path": "experiments/004-failure-modes/README.md",
+      "number": 4,
+      "title": "Failure Modes On Purpose",
+      "status": "completed",
+      "stack": [
+        "python"
+      ],
+      "concepts": [
+        "agent-loop",
+        "tool-calling",
+        "agent-runtime"
+      ],
+      "day": 1,
+      "code": {
+        "path": "experiments/004-failure-modes",
+        "readme": "experiments/004-failure-modes/README.md"
+      },
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "language": "en",
+      "revision": 1,
+      "body": "# Experiment 004 — Failure Modes On Purpose\n\n## Goal\n\nBreak the loop six different ways and check that each one ends with a named\nstop reason instead of a stack trace or an infinite run.\n\n## Architecture\n\n```text\ncall → registry.invoke\n         ├─ ok        → observation\n         ├─ ToolError → \"ERROR: …\"   as observation\n         ├─ Exception → \"ERROR: … raised RuntimeError: …\"\n         └─ repeated  → \"REFUSED: identical call …\"\nrun  → stop_reason ∈ final-answer | tool-budget | max-turns\n                | provider-error | tool-error\n```\n\n## What I Learned\n\n- Model mistakes are **data**. A missing argument, an invented tool name and a\n  crashed dependency all come back as text, and the run keeps going. The only\n  design question is whether the text is informative enough to recover from —\n  \"Error\" is worthless, `calculator: missing argument(s) expression` is not.\n- The repeat guard matters more than the turn limit. A stuck model burns its\n  whole `max_turns` budget on identical calls and still returns \"success-ish\";\n  refusing the third identical call gives it a chance to change approach.\n- Two budgets are needed, not one: turns bound the conversation, tool calls\n  bound the blast radius _inside_ a turn (one assistant message can ask for six\n  calls).\n- `fail_on_tool_error` is a product decision, not a technical one: strict mode\n  is right for a pipeline, wrong for an exploratory agent.\n\n## Result\n\n```text\n$ python3 experiments/e04_failure_modes.py\n1. invalid tool arguments      → ERROR: calculator: missing argument(s) expression\n                                  recovery: \"I need an expression to compute anything.\"\n2. a tool that does not exist  → ERROR: unknown tool: web_search\n                                  recovery: \"That tool is unavailable…\"\n3. same call repeated          → REFUSED: identical call to now already made 2 times\n4. no scripted turn left       → stop_reason: provider-error\n5. more calls than allowed     → stop_reason: tool-budget   (tool_calls ≤ 2)\n6. tool raises                 → ERROR: crash raised RuntimeError: database connection died\n\nstop reasons:\n  bad-arguments → final-answer    unknown-tool → final-answer\n  stuck-loop    → final-answer    provider-error → provider-error\n  tool-budget   → tool-budget     tool-crash   → final-answer\n```\n\nRecoveries reached `final-answer`; the two structural limits stopped the run\nwith a reason. That split is the whole point of a runtime.\n\n### Why this notebook stays scripted\n\nEvery case here is built with `ScriptedProvider` even under `--real`. A failure\ncatalogue has to be reproducible: if the injected turn comes from a live model,\nthe case either does not happen today or happens differently tomorrow, and the\ntest that pins the stop reason becomes noise. The live endpoint contributes the\n*shape* of these failures instead — `ProviderError` for a missing key, an HTTP\nerror class after three attempts with backoff, and an empty `content` turn that\ncarries only `tool_calls`.\n\nWhat a live model does add is a new failure that no script invents: probing for\nkeys that do not exist (Experiment 005's real runs), which burns turns while\nlooking perfectly reasonable in the trace.\n\n## Code\n\n- `agent/loop.py` — `_dispatch`, `repeat_limit`, `max_tool_calls`\n- `agent/provider.py` — `ProviderError`, retry/backoff, script exhaustion\n- `experiments/e04_failure_modes.py`\n\n## Next Step\n\nExperiment 005: grow the history until the runtime has to decide what to\nforget.",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/experiments/004-failure-modes.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "005-context-trim",
+      "kind": "experiment",
+      "slug": "005-context-trim",
+      "path": "experiments/005-context-trim/README.md",
+      "number": 5,
+      "title": "Context Budget And Trimming",
+      "status": "completed",
+      "stack": [
+        "python"
+      ],
+      "concepts": [
+        "agent-loop",
+        "agent-runtime"
+      ],
+      "day": 1,
+      "code": {
+        "path": "experiments/005-context-trim",
+        "readme": "experiments/005-context-trim/README.md"
+      },
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/context.py"
+      },
+      "language": "en",
+      "revision": 1,
+      "body": "# Experiment 005 — Context Budget And Trimming\n\n## Goal\n\nGrow the conversation until the runtime has to decide what to forget, and see\nwhether the task still completes.\n\n## Architecture\n\n```text\nmessages (grows every turn)\n  ↓\nestimate_tokens()  ≈ chars / 4 + 4 per message\n  ↓\ntrim(budget)       keep system, drop oldest, always keep the current task\n  ↓\nprovider.complete(request)      ← the model never sees what was dropped\n```\n\n## What I Learned\n\n- Trimming is invisible to the model. It gets a shorter prompt and has no idea\n  anything was removed — which is exactly how a \"forgot the instructions\" bug is\n  born.\n- The system prompt and the live task are the two things worth protecting;\n  everything in between is negotiable. That ordering is a policy decision, not\n  a fact about transformers.\n- A fact that only exists in the prompt is temporary. `order_total` survived\n  here because it lived in a tool (`note_get`), not because the model remembered\n  it.\n- Chars ÷ 4 is a bad tokenizer and a good budget signal. The estimate never has\n  to be exact; it only has to be monotonic and cheap, because the decision it\n  drives is \"drop a turn or not\".\n\n## Result\n\n```text\n$ python3 experiments/e05_context_trim.py\nhistory       : 40 messages\nfull estimate : 2165 tokens (budget 900)\ntrimmed       : 18 messages, 881 tokens\ntrim events   : 2 of 2 turns had to drop context\nrequest #1    : 17 messages actually sent\nanswer        : order_total is 100.0.\nstop reason   : final-answer\n```\n\nTwenty past turns were discarded and the task still completed. The same script\nwith a 40-token budget keeps only the system prompt plus the last turn — the\nrun still answers, but now the \"memory\" is provably the tool, not the context.\n\n### Against the live endpoint: the same run twice, twice differently\n\nRun on 2026-09-12 against ModelScope API-Inference (魔搭社区), model `Qwen/Qwen3.8-Flash-Next`, `enable_thinking: false`, `max_tokens: 1024`:\n\n```text\n$ python3 experiments/e05_context_trim.py --real   # run A\nanswer        : I can retrieve the stored figure, but I can't confirm it.\n                **What I found:** `order_total` = 100.0 …\nstop reason   : final-answer\nturns / tools / tokens : 4 / 6 / 5213\nturn  3 note_get subtotal  → ERROR: no note stored under 'subtotal'\nturn  3 note_get tax       → ERROR: no note stored under 'tax'\nturn  3 note_get shipping  → ERROR: no note stored under 'shipping'\nturn  3 note_get discount  → ERROR: no note stored under 'discount'\n\n$ python3 experiments/e05_context_trim.py --real   # run B, same inputs\nanswer        : (empty)\nstop reason   : max-turns\nturns / tools / tokens : 4 / 4 / 4730\n```\n\nRun A read the stored value, then went hunting through four key names that the\ntrimming had removed from its view, and answered honestly that it could not\nconfirm the figure. Run B never converged: it kept asking, and the turn budget\nstopped it with no answer at all.\n\nThe scripted version of this experiment could not teach me that. It always\nanswers, because its next turn is written down. With a live model, trimming the\ncontext does not just lose tokens — it removes the premise the model was\nreasoning from, and whether the run survives that is a property of the model's\nbehaviour on that day, not of my code. Budgets convert \"lost context\" into a\nstop reason you can see; nothing recovers the answer.\n\n## Code\n\n- `tft-agent-set18/agent/context.py` — `estimate_tokens`, `trim`\n- `tft-agent-set18/agent/loop.py` — trimming applied per turn, `context_trimmed` event\n- `tft-agent-set18/experiments/e05_context_trim.py`\n- `tft-agent-set18/tests/test_context_trace.py` — system prompt and current task\n  survive extreme pressure\n\n## Next Step\n\nStreaming and usage against a real endpoint (Day 02), then a summarising trim\ninstead of a deleting one.",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/experiments/005-context-trim.md",
+          "sourceRevision": 1
+        }
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "id": "custom-agent-vs-langgraph",
+      "language": "en",
+      "revision": 1,
+      "kind": "comparison",
+      "slug": "custom-agent-vs-langgraph",
+      "path": "docs/en/comparisons/custom-agent-vs-langgraph.md",
+      "title": "Hand-Written Agent Loop vs LangGraph",
+      "date": "2026-09-10",
+      "status": "learning",
+      "category": "architecture",
+      "summary": "Where a hand-written loop stops being cheaper than a framework, measured by writing both.",
+      "concepts": [
+        "agent",
+        "agent-loop",
+        "tool-calling",
+        "agent-runtime"
+      ],
+      "trainingProject": {
+        "repo": "tft-agent-set18",
+        "path": "agent/loop.py"
+      },
+      "productionProject": {
+        "repo": "tft-agent-set17",
+        "path": "api/agent/graph.py"
+      },
+      "body": "# Hand-Written Agent Loop vs LangGraph\n\n_Started on Day 01. The rule for this page: only claims I have personally\nreproduced, with a link to the code that proves it._\n\n## The question\n\nSet 17 already uses LangGraph. If I rewrite the Agent from scratch in\nSet 18, do I end up with something worse — or with the understanding of why\nLangGraph has the shape it has?\n\n## What a loop costs without a framework\n\nMeasured on Day 01 in `tft-agent-set18`: the loop itself is 203 lines, the whole\nruntime 683, and it needs no third-party package. A correct loop is tiny —\ntranscript, tool schemas, executor, exit test, budget. The complexity is not in\nthe loop. It appears the moment the loop has to survive:\n\n- [ ] process restart, with the transcript still intact — checkpoints\n- [ ] a human approving a tool call mid-run — interrupts\n- [ ] parallel branches writing to the same state — reducers\n- [ ] streaming tokens and tool events to one client — event protocol\n- [~] recording what happened — `trace.py` writes one JSON line per event, so a\n  bad run can be read back; replaying it cannot be done yet\n- [ ] routing that is not a linear chain — graph edges\n\n## Prediction\n\nThose six bullets map almost exactly onto LangGraph's headline features\n(checkpointing, human-in-the-loop, reducers, streaming, tracing, conditional\nedges). The framework is a list of real problems, which is why adopting it is\nthe right call for the production project.\n\nWhat I expect to keep hand-written forever: the loop itself and the tool\ncontract. They are small, and understanding them is the point.\n\n## Evidence\n\n- `experiments/003-agent-loop/` — four turns, three tools, nine messages: the loop\n- `experiments/004-failure-modes/` — six stop reasons: the guards\n- `experiments/005-context-trim/` — 40 history messages dropped to 18: the policy\n- `tft-agent-set18/docs/architecture.md` — the same table from the code side\n\n## Conclusion\n\n_Not yet — this page gets its verdict once the Set 18 loop reaches the same\nfeature list as Set 17's graph._",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/comparisons/custom-agent-vs-langgraph.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "learning-system",
+      "language": "en",
+      "revision": 1,
+      "kind": "comparison",
+      "slug": "learning-system",
+      "path": "docs/en/architecture/learning-system.md",
+      "title": "How This Learning System Works",
+      "date": "2026-09-17",
+      "status": "completed",
+      "category": "architecture",
+      "summary": "The repository is the database. Markdown is the input, generated JSON is the output, React only renders.",
+      "concepts": [],
+      "body": "# How This Learning System Works\n\n## The rule\n\nThere is exactly one source of truth: **Markdown inside this repository**.\n`data/progress.json` and everything the site renders are _derived_. If a\nnumber on the website looks wrong, the fix is a Markdown file, never the\ngenerator.\n\n## Pipeline\n\n```text\ndocs/en/daily/*.md        ┐\ndocs/en/concepts/*.md     │\ndocs/zh/daily/*.md        │   frontmatter (YAML)\ndocs/zh/concepts/*.md     ├─▶ body (Markdown)\ndocs/{en,zh}/questions/   │\nexperiments/*/README.md   │\ndata/site.json            ┘\n        ↓\nscripts/lib/load.ts         walk + parse → typed entries + issues\nscripts/lib/validate.ts     cross-document rules\nscripts/lib/translation.ts  language matching → synced / outdated / missing\nscripts/lib/progress.ts     aggregation\n        ↓\ndata/progress.json         committed, human readable\nweb/src/data/generated/    build product\n        ↓\nReact (Vite)               renders, never computes\n```\n\n`npm run build` regenerates the derived data first (`prebuild` →\n`npm run generate`), so a freshly cloned repository builds a complete site\nwith no stale JSON in git.\n\n## Three projects, three jobs\n\n```text\nagent-engineering-lab → tft-agent-set18 → tft-agent-set17\n     explain              prove             ship\n```\n\n- **Lab** (this repository) records and displays learning. Its\n  `experiments/*/README.md` files hold _descriptions, code snippets and\n  results_ — the code itself is not duplicated here.\n- **Set 18** is the training ground: minimal, hand-written implementations,\n  experiments runnable in `--mock` mode without an API key.\n- **Set 17** is the product. Only ideas already proven in Set 18 land here.\n\nFrontmatter carries that thread: every Day, Concept and Experiment may set\n`training_project` and `production_project` with a `repo` and a `path`, and\nthe site renders both as links.\n\n## Why the browser never parses Markdown\n\nTwo reasons, both practical:\n\n1. Scanning files needs a filesystem; GitHub Pages bundle has none.\n2. Generation in Node means validation runs _before_ the site is built. A\n   missing `phase` field fails CI instead of rendering a blank card.\n\n## Bilingual documents\n\nEnglish and Chinese each own a complete Markdown tree:\n\n```text\ndocs/en/     canonical technical source\ndocs/zh/     complete Chinese learning / review version\n```\n\nChinese is **not** sentence-by-sentence machine translation, and it is not an\nassistance card tucked under an English paragraph. It is a standalone Chinese\ndocument you can review from — restructuring sentences for learning purposes is\nallowed, while technical facts, API names, class names, function names, file\nnames, code and experiment results never move.\n\nThe pairing runs on a **stable id**, never on the file name:\n\n```yaml\n# docs/en/concepts/agent-loop.md\nid: agent-loop\nlanguage: en\nrevision: 1\n```\n\n```yaml\n# docs/zh/concepts/agent-loop.md\nid: agent-loop\nlanguage: zh\nsource_revision: 1\n```\n\nThe content engine compares the two numbers and derives the translation state:\n\n| Comparison                          | Status      |\n| ----------------------------------- | ----------- |\n| `source_revision == revision`       | `synced`    |\n| `source_revision != revision`       | `outdated`  |\n| English exists, Chinese does not    | `missing`   |\n\nThe state is written to `web/src/data/generated/sync.json`, and the Progress page\nshows `English Days`, `Chinese Days` and `Translation Sync`.\n\n> The `assist:` frontmatter key and the `> **中文理解**` blockquotes belonged to the\n> previous architecture. Everything they carried now lives in `docs/zh/`, and no\n> code reads them any more.\n\n## Routes and the language switch\n\n```text\n/en/learn/day/1     /zh/learn/day/1\n/en/concepts/...    /zh/concepts/...\n```\n\n`EN | 中文` in the header **navigates** to the same document id under the other\nlanguage — it does not flip a local UI flag. The URL is the final source of\ntruth; `localStorage` only remembers the preference (key `agent-lab-language`,\ndefault `en`). Legacy links without a language prefix (`/learn/day/1`) redirect\nto `/en/learn/day/1` instead of 404ing.\n\n## Glossary\n\n`docs/glossary.yml` holds the protected technical terms and their Chinese\nrenderings. English terms stay English; the first occurrence may carry a gloss\n(`Context Engineering（上下文工程）`) and no Chinese replacement is invented\nafterwards.\n\n## Adding content\n\n| I want to…                  | I touch…                                     | React code |\n| --------------------------- | -------------------------------------------- | ---------- |\n| add a learning day           | `docs/en/daily/day-04.md`                    | none       |\n| add its Chinese version      | `docs/zh/daily/day-04.md`                    | none       |\n| add a concept                | `docs/en/concepts/context-engineering.md`    | none       |\n| record an experiment         | `experiments/004-state/README.md`            | none       |\n| add an architecture doc      | `docs/en/architecture/<name>.md`             | none       |\n| write a comparison           | `docs/en/comparisons/<slug>.md`              | none       |\n| ask a question               | `docs/en/questions/open.md` → `resolved.md`  | none       |\n\n## Filling in the Chinese side\n\nUse the project skill:\n\n```text\n/skill:bilingual-learning        # ordinary notes: tighter Chinese, still complete\n/skill:bilingual-learning deep   # harder concepts: fuller mechanics, 补充理解\n/skill:bilingual-learning review # read-only drift check\n```",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/architecture/learning-system.md",
+          "sourceRevision": 1
+        }
+      }
+    }
+  ],
+  "questions": {
+    "asked": 3,
+    "resolved": 1,
+    "open": 2,
+    "items": [
+      {
+        "slug": "Q001",
+        "status": "learning",
+        "question": "Why does an Agent need a State object when the message transcript already contains everything the model can see?",
+        "concept": "agent-runtime",
+        "path": "docs/en/questions/open.md"
+      },
+      {
+        "slug": "Q002",
+        "status": "learning",
+        "question": "When a streamed tool call's `arguments` arrive in fragments across SSE chunks, who reassembles them, and what happens if a chunk is lost?",
+        "concept": "llm-api",
+        "path": "docs/en/questions/open.md"
+      },
+      {
+        "slug": "Q001",
+        "status": "completed",
+        "question": "Why does a Workflow not need a loop, while an Agent always does?",
+        "explanation": "A Workflow's step count is known when I write the code, so control flow can live in my `for` / `if`. An Agent's step count depends on what the intermediate results say, so the branch has to move into the model's output — and something outside the model has to keep going until the model stops asking. What changed: I stopped trying to \"make the model decide\" through prompt wording and started treating the exit test as runtime code that I own.",
+        "concept": "agent",
+        "path": "docs/en/questions/resolved.md"
+      }
+    ]
+  }
+}

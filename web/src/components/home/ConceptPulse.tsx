@@ -1,12 +1,17 @@
 import { Link } from "react-router-dom";
-import { concepts, currentFocus, progress } from "../../lib/content";
+import { docsFor, currentFocus, progress } from "../../lib/content";
+import { langHref, useLanguage } from "../../lib/language";
+import { t } from "../../lib/strings";
 import { statusGlyph, statusTextClass } from "../../lib/status";
 import { ProgressBar, SectionTitle } from "../ui/Primitives";
 
 /** Latest concept activity — the cheapest possible "knowledge pulse" widget. */
 export function ConceptPulse() {
-  const focus = currentFocus();
-  const ranked = concepts
+  const { language } = useLanguage();
+  const docs = docsFor(language);
+
+  const focus = currentFocus(language);
+  const ranked = docs.concepts
     .slice()
     .sort((a, b) => b.progress - a.progress)
     .slice(0, 6);
@@ -15,12 +20,12 @@ export function ConceptPulse() {
     <section>
       <SectionTitle
         hint={
-          <Link to="/concepts" className="hover:text-[var(--text)]">
-            knowledge map →
+          <Link to={langHref(language, "concepts")} className="hover:text-[var(--text)]">
+            {t(language, "label.map")} →
           </Link>
         }
       >
-        Current focus
+        {t(language, "home.focus")}
       </SectionTitle>
 
       <div className="grid gap-3 lg:grid-cols-[1.15fr_1fr]">
@@ -31,12 +36,15 @@ export function ConceptPulse() {
                 {focus.category}
               </p>
               <h3 className="mt-2 text-xl font-semibold tracking-tight">
-                <Link to={`/concepts/${focus.id}`} className="hover:text-[var(--accent)]">
+                <Link
+                  to={langHref(language, `concepts/${focus.id}`)}
+                  className="hover:text-[var(--accent)]"
+                >
                   {focus.title}
                 </Link>
               </h3>
               <p className="mt-2 text-[13px] leading-6 text-[var(--dim)]">
-                {focus.summary ?? siteDescription()}
+                {focus.summary ?? t(language, "home.noConceptLearning")}
               </p>
               <div className="mt-4">
                 <ProgressBar
@@ -48,7 +56,7 @@ export function ConceptPulse() {
             </>
           ) : (
             <p className="font-mono text-[12px] text-[var(--faint)]">
-              No concept is marked as learning yet.
+              {t(language, "home.noConceptLearning")}
             </p>
           )}
         </div>
@@ -63,7 +71,7 @@ export function ConceptPulse() {
                 {statusGlyph[concept.status]}
               </span>
               <Link
-                to={`/concepts/${concept.id}`}
+                to={langHref(language, `concepts/${concept.id}`)}
                 className="min-w-0 flex-1 truncate text-[13px] text-[var(--text)] hover:text-[var(--accent)]"
               >
                 {concept.title}
@@ -75,7 +83,7 @@ export function ConceptPulse() {
           ))}
           {ranked.length === 0 && (
             <li className="px-4 py-6 text-center font-mono text-[12px] text-[var(--faint)]">
-              docs/concepts/ is empty.
+              {t(language, "home.noConcepts")}
             </li>
           )}
         </ul>
@@ -87,8 +95,4 @@ export function ConceptPulse() {
       </p>
     </section>
   );
-}
-
-function siteDescription(): string {
-  return "Nothing here yet — add a Markdown file under docs/concepts/ and it appears automatically.";
 }

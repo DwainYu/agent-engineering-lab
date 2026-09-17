@@ -2,14 +2,17 @@ import { describe, expect, it } from "vitest";
 import { extractFrontmatter } from "../scripts/lib/frontmatter.js";
 import { parseSource, toConceptEntry, toDayEntry } from "../scripts/lib/entries.js";
 import { loadContent } from "../scripts/lib/load.js";
+import type { DayEntry } from "../scripts/lib/types.js";
+import { emptyTranslationMap } from "../scripts/lib/translation.js";
 import { buildProgress } from "../scripts/lib/progress.js";
 import {
-  assistIssues,
-  hasAssistBlock,
   validateContent,
 } from "../scripts/lib/validate.js";
 
 const DAY = `---
+id: day-07
+language: en
+revision: 1
 day: 7
 title: Retry logic in the runtime
 date: 2026-09-16
@@ -57,7 +60,7 @@ x
 `;
 
 function issuesOf(source: string, mutate?: (doc: Record<string, unknown>) => void) {
-  const parsed = parseSource("docs/daily/day-07.md", source);
+  const parsed = parseSource("docs/en/daily/day-07.md", source);
   if (mutate) mutate(parsed.data);
   const issues: ReturnType<typeof loadContent>["issues"] = [];
   toDayEntry(parsed, issues);
@@ -105,8 +108,8 @@ describe("entry parsing", () => {
     const issues: ReturnType<typeof loadContent>["issues"] = [];
     const concept = toConceptEntry(
       parseSource(
-        "docs/concepts/x.md",
-        "---\nid: x\ntitle: X\ncategory: runtime\nstatus: learning\n---\n\nbody\n",
+        "docs/en/concepts/x.md",
+        "---\nid: x\nlanguage: en\nrevision: 1\ntitle: X\ncategory: runtime\nstatus: learning\n---\n\nbody\n",
       ),
       issues,
     );
@@ -115,130 +118,20 @@ describe("entry parsing", () => {
   });
 });
 
-/* ------------------------------------------------------------------ *
- * Chinese assistance: frontmatter, body, and the two halves agreeing.
- * ------------------------------------------------------------------ */
-
-const ASSIST_BODY = `
-> **中文理解**
->
-> Agent Loop 就是模型决策 → 工具执行 → 结果回填，直到模型给出最终答案或预算耗尽。
-`;
-
-function dayWithAssist(assistYaml: string): string {
-  return DAY.replace("training_project:", `assist:\n${assistYaml}\n\ntraining_project:`);
+/** `loadContent` pairs translations in a second pass, so a hand-built entry has to carry the empty map itself. */
+function standalone(entry: Omit<DayEntry, "translation">): DayEntry {
+  return { ...entry, translation: emptyTranslationMap() };
 }
-
-function parsedDay(source: string) {
-  const issues: ReturnType<typeof loadContent>["issues"] = [];
-  const entry = toDayEntry(parseSource("docs/daily/day-07.md", source), issues);
-  return { entry, issues };
-}
-
-describe("chinese assistance frontmatter", () => {
-  it("parses legacy content that declares no assist at all", () => {
-    const { entry, issues } = parsedDay(DAY);
-    expect(issues).toEqual([]);
-    expect(entry?.assist).toBeUndefined();
-  });
-
-  it("parses a valid assist config", () => {
-    const { entry, issues } = parsedDay(dayWithAssist("  language: zh\n  mode: brief"));
-    expect(issues).toEqual([]);
-    expect(entry?.assist).toEqual({ language: "zh", mode: "brief" });
-  });
-
-  it("rejects an assist mode that is not brief or deep", () => {
-    const { entry, issues } = parsedDay(dayWithAssist("  language: zh\n  mode: full"));
-    expect(entry?.assist).toBeUndefined();
-    expect(issues.map((issue) => issue.message).join("\n")).toContain(
-      "assist.mode must be brief | deep, got full",
-    );
-  });
-
-  it("rejects a language other than zh", () => {
-    const { issues } = parsedDay(dayWithAssist("  language: en\n  mode: brief"));
-    expect(issues.map((issue) => issue.message).join("\n")).toContain(
-      'assist.language must be "zh", got en',
-    );
-  });
-
-  it("requires both assist fields", () => {
-    const { issues } = parsedDay(dayWithAssist("  mode: brief"));
-    expect(issues.map((issue) => issue.message).join("\n")).toContain(
-      'Missing field: assist.language (expected "zh")',
-    );
-  });
-});
-
-describe("chinese assistance body", () => {
-  it("finds only the marker line, not any old blockquote", () => {
-    expect(hasAssistBlock(ASSIST_BODY, "中文理解")).toBe(true);
-    expect(hasAssistBlock("> 普通的引用\n", "中文理解")).toBe(false);
-    expect(hasAssistBlock("> 中文理解在正文里出现。\n", "中文理解")).toBe(false);
-  });
-
-  it("fails when assist is declared but no block exists", () => {
-    const issues = assistIssues({
-      path: "docs/daily/day-07.md",
-      body: "## Today's Goal\n\nx\n",
-      assist: { language: "zh", mode: "brief" },
-    });
-    expect(issues[0]?.level).toBe("error");
-    expect(issues[0]?.message).toContain('no "> **中文理解**" block');
-  });
-
-  it("fails when a block exists without assist frontmatter", () => {
-    const issues = assistIssues({ path: "docs/daily/day-07.md", body: ASSIST_BODY });
-    expect(issues.map((issue) => issue.message).join("\n")).toContain(
-      "without assist: frontmatter",
-    );
-  });
-
-  it("warns when a deep block is declared as brief", () => {
-    const issues = assistIssues({
-      path: "docs/daily/day-07.md",
-      body: ASSIST_BODY + "\n> **中文深入理解**\n>\n> x\n",
-      assist: { language: "zh", mode: "brief" },
-    });
-    expect(issues.map((issue) => issue.level)).toEqual(["warning"]);
-  });
-
-  it("accepts a block that matches its declared mode", () => {
-    expect(
-      assistIssues({
-        path: "docs/daily/day-07.md",
-        body: ASSIST_BODY,
-        assist: { language: "zh", mode: "brief" },
-      }),
-    ).toEqual([]);
-  });
-
-  it("keeps the real repository content self-consistent", () => {
-    const bundle = loadContent();
-    const docs = [
-      ...bundle.days,
-      ...bundle.concepts,
-      ...bundle.experiments,
-      ...bundle.comparisons,
-    ];
-    const seeded = docs.filter((doc) => doc.assist !== undefined);
-    expect(seeded.map((doc) => doc.assist?.mode).sort()).toEqual(["brief", "deep"]);
-    for (const doc of docs) {
-      expect(assistIssues(doc)).toEqual([]);
-    }
-  });
-});
 
 describe("validation", () => {
   it("requires every section in a completed day", () => {
     const source = DAY.replace("## Key Takeaways\n\nx\n", "");
     const bundle = loadContent();
-    bundle.days = [
-      toDayEntry(parseSource("docs/daily/day-07.md", source), bundle.issues)!,
+    bundle.byLanguage.en.days = [
+      standalone(toDayEntry(parseSource("docs/en/daily/day-07.md", source), bundle.issues)!),
     ];
     const issues = validateContent(bundle).filter(
-      (issue) => issue.file === "docs/daily/day-07.md",
+      (issue) => issue.file === "docs/en/daily/day-07.md",
     );
     const text = issues.map((issue) => issue.message).join("\n");
     expect(text).toContain('requires the section "## Key Takeaways"');
@@ -248,10 +141,10 @@ describe("validation", () => {
   it("flags a day number that does not match its filename", () => {
     const bundle = loadContent();
     const entry = toDayEntry(
-      parseSource("docs/daily/day-07.md", DAY.replace("day: 7", "day: 9")),
+      parseSource("docs/en/daily/day-07.md", DAY.replace("day: 7", "day: 9")),
       bundle.issues,
     )!;
-    bundle.days = [entry];
+    bundle.byLanguage.en.days = [standalone(entry)];
     const issues = validateContent(bundle).filter((issue) =>
       issue.message.includes("does not match file name"),
     );
@@ -260,11 +153,11 @@ describe("validation", () => {
 
   it("flags dangling concept and experiment references", () => {
     const bundle = loadContent();
-    bundle.days = [toDayEntry(parseSource("docs/daily/day-07.md", DAY), bundle.issues)!];
-    bundle.concepts = [];
-    bundle.experiments = [];
+    bundle.byLanguage.en.days = [standalone(toDayEntry(parseSource("docs/en/daily/day-07.md", DAY), bundle.issues)!)];
+    bundle.byLanguage.en.concepts = [];
+    bundle.byLanguage.en.experiments = [];
     const messages = validateContent(bundle)
-      .filter((issue) => issue.file === "docs/daily/day-07.md")
+      .filter((issue) => issue.file === "docs/en/daily/day-07.md")
       .map((issue) => issue.message);
     expect(messages.join("\n")).toContain("agent-loop");
     expect(messages.join("\n")).toContain("013");
@@ -277,9 +170,9 @@ describe("progress generation", () => {
 
   it("counts days by status and derives the completion rate", () => {
     const { summary } = progress;
-    expect(summary.totalDays).toBeGreaterThanOrEqual(bundle.days.length);
+    expect(summary.totalDays).toBeGreaterThanOrEqual(bundle.byLanguage.en.days.length);
     expect(summary.completedDays).toBe(
-      bundle.days.filter((d) => d.status === "completed").length,
+      bundle.byLanguage.en.days.filter((d) => d.status === "completed").length,
     );
     expect(summary.completionRate).toBe(
       Math.round((summary.completedDays / summary.totalDays) * 100),
@@ -287,7 +180,7 @@ describe("progress generation", () => {
     expect(summary.currentDay).toBe(
       Math.max(
         0,
-        ...bundle.days.filter((d) => d.status === "completed").map((d) => d.day),
+        ...bundle.byLanguage.en.days.filter((d) => d.status === "completed").map((d) => d.day),
       ),
     );
   });
@@ -312,7 +205,7 @@ describe("progress generation", () => {
     expect(training).toBeDefined();
     expect(training!.days).toBeGreaterThan(0);
     expect(training!.experiments).toBeGreaterThan(0);
-    expect(progress.summary.questionsAsked).toBe(bundle.questions.asked);
+    expect(progress.summary.questionsAsked).toBe(bundle.byLanguage.en.questions.asked);
   });
 
   it("keeps the generated JSON in sync with the markdown", async () => {

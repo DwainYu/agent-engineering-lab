@@ -3,6 +3,7 @@ id: 001-basic-llm
 number: 1
 title: One Model Turn
 status: completed
+revision: 1
 language:
   - python
 concepts:

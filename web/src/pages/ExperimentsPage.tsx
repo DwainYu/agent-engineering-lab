@@ -1,25 +1,30 @@
 import { Link } from "react-router-dom";
 import { PageContainer } from "../components/layout/Layout";
 import { Card, StatusPill } from "../components/ui/Primitives";
-import { experiments } from "../lib/content";
+import { docsFor } from "../lib/content";
+import { langHref, useLanguage } from "../lib/language";
+import { t } from "../lib/strings";
 import { excerpt } from "../lib/markdown";
 
 export function ExperimentsPage() {
+  const { language } = useLanguage();
+  const docs = docsFor(language);
+
   return (
     <PageContainer
-      title="Experiments"
-      description="One experiment per directory in experiments/. The README holds the lab notebook; the runnable code lives in the training repository."
+      title={t(language, "label.experiments")}
+      description={t(language, "experiments.description")}
       meta={
         <span className="font-mono text-[11px] text-[var(--faint)]">
-          {experiments.length} experiments
+          {t(language, "label.exps", { count: docs.experiments.length })}
         </span>
       }
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        {experiments.map((experiment) => (
+        {docs.experiments.map((experiment) => (
           <Link
             key={experiment.id}
-            to={`/experiments/${experiment.id}`}
+            to={langHref(language, `experiments/${experiment.id}`)}
             className="block"
           >
             <Card className="h-full transition-colors hover:border-[var(--accent)]/40">
@@ -36,15 +41,15 @@ export function ExperimentsPage() {
                 {experiment.summary ?? excerpt(experiment.body, 170)}
               </p>
               <div className="mt-3 flex flex-wrap gap-2 font-mono text-[11px] text-[var(--faint)]">
-                {experiment.language.map((language) => (
+                {experiment.stack.map((lang) => (
                   <span
-                    key={language}
+                    key={lang}
                     className="rounded border border-[var(--line)] px-1.5 py-0.5"
                   >
-                    {language}
+                    {lang}
                   </span>
                 ))}
-                {experiment.day != null && (
+                {typeof experiment.day === "number" && (
                   <span className="rounded border border-[var(--line)] px-1.5 py-0.5">
                     Day {String(experiment.day).padStart(2, "0")}
                   </span>

@@ -2,47 +2,55 @@ import { Link } from "react-router-dom";
 import { ConceptGraph } from "../components/concepts/ConceptGraph";
 import { PageContainer } from "../components/layout/Layout";
 import { Card, SectionTitle, StatusPill } from "../components/ui/Primitives";
-import {
-  comparisons,
-  concepts,
-  conceptsByCategory,
-  daysForConcept,
-} from "../lib/content";
+import { conceptsByCategory, daysForConcept, docsFor } from "../lib/content";
+import { langHref, useLanguage } from "../lib/language";
+import { t } from "../lib/strings";
 import { excerpt } from "../lib/markdown";
 import { statusGlyph, statusTextClass } from "../lib/status";
 
 export function ConceptsPage() {
-  const groups = conceptsByCategory();
+  const { language } = useLanguage();
+  const docs = docsFor(language);
+
+  const groups = conceptsByCategory(language);
 
   return (
     <PageContainer
       wide
-      title="Concepts"
-      description="The knowledge map. Each node is one file in docs/concepts/ with prerequisites, related nodes and the experiments that proved it."
+      title={t(language, "concepts.title")}
+      description={t(language, "concepts.description")}
       meta={
         <span className="font-mono text-[11px] text-[var(--faint)]">
-          {concepts.length} nodes · {comparisons.length} comparisons
+          {docs.concepts.length} {t(language, "label.nodes")} · {docs.comparisons.length}{" "}
+          {t(language, "label.comparisonsPlural")}
         </span>
       }
     >
       <section className="mb-10">
-        <SectionTitle>Map</SectionTitle>
-        <ConceptGraph concepts={concepts} />
+        <SectionTitle>{t(language, "label.map")}</SectionTitle>
+        <ConceptGraph concepts={docs.concepts} />
         <p className="mt-2 font-mono text-[11px] text-[var(--faint)]">
-          ✓ mastered · ◐ learning · ○ planned — links point from prerequisite to concept
+          ✓ {t(language, "label.status.completed")} · ◐{" "}
+          {t(language, "label.status.learning")} · ○ {t(language, "label.status.planned")}{" "}
+          — {t(language, "label.concepts").toLowerCase()} →{" "}
+          {t(language, "label.concepts").toLowerCase()}
         </p>
       </section>
 
       {groups.map((group) => (
         <section key={group.category} className="mb-10">
-          <SectionTitle hint={`${group.items.length} nodes`}>
+          <SectionTitle hint={t(language, "label.nodes", { count: group.items.length })}>
             {group.category}
           </SectionTitle>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {group.items.map((concept) => {
-              const learnedOn = daysForConcept(concept.id);
+              const learnedOn = daysForConcept(language, concept.id);
               return (
-                <Link key={concept.id} to={`/concepts/${concept.id}`} className="block">
+                <Link
+                  key={concept.id}
+                  to={langHref(language, `concepts/${concept.id}`)}
+                  className="block"
+                >
                   <Card className="h-full transition-colors hover:border-[var(--accent)]/40">
                     <div className="flex items-start justify-between gap-3">
                       <h3 className="flex items-center gap-2 text-[15px] font-medium text-[var(--text)]">
@@ -62,7 +70,11 @@ export function ConceptsPage() {
                         <span>{learnedOn.map((day) => `Day ${day.day}`).join(", ")}</span>
                       )}
                       {concept.experiments.length > 0 && (
-                        <span>{concept.experiments.length} experiments</span>
+                        <span>
+                          {t(language, "label.exps", {
+                            count: concept.experiments.length,
+                          })}
+                        </span>
                       )}
                     </div>
                   </Card>
@@ -73,14 +85,14 @@ export function ConceptsPage() {
         </section>
       ))}
 
-      {comparisons.length > 0 && (
+      {docs.comparisons.length > 0 && (
         <section>
-          <SectionTitle>Comparisons</SectionTitle>
+          <SectionTitle>{t(language, "label.comparisons")}</SectionTitle>
           <div className="grid gap-3 sm:grid-cols-2">
-            {comparisons.map((comparison) => (
+            {docs.comparisons.map((comparison) => (
               <Link
                 key={comparison.id}
-                to={`/comparisons/${comparison.id}`}
+                to={langHref(language, `comparisons/${comparison.id}`)}
                 className="block"
               >
                 <Card className="h-full transition-colors hover:border-[var(--accent)]/40">

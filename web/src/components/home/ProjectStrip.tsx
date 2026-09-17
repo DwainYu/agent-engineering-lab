@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import { site, summary } from "../../lib/content";
+import { langHref, useLanguage } from "../../lib/language";
+import { t } from "../../lib/strings";
 import { githubRepoUrl } from "../../lib/paths";
 
 const LABEL: Record<string, string> = {
@@ -8,14 +10,16 @@ const LABEL: Record<string, string> = {
 };
 
 export function ProjectStrip() {
+  const { language } = useLanguage();
+
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--faint)]">
-          Where the learning lands
+          {t(language, "home.landing")}
         </h2>
         <Link
-          to="/projects"
+          to={langHref(language, "projects")}
           className="text-xs text-[var(--faint)] hover:text-[var(--text)]"
         >
           the three-repo system →
@@ -50,7 +54,7 @@ export function ProjectStrip() {
               {stats && (
                 <p className="mt-4 font-mono text-[11px] text-[var(--faint)]">
                   {stats.days} days · {stats.concepts} concepts · {stats.experiments}{" "}
-                  experiments linked
+                  {t(language, "home.experimentsLinked")}
                 </p>
               )}
             </a>

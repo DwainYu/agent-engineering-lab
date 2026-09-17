@@ -1,6 +1,9 @@
 ---
+id: day-02
 day: 2
 title: LLM API, Streaming And Usage
+language: en
+revision: 1
 date: "2026-09-11"
 status: learning
 phase: fundamentals

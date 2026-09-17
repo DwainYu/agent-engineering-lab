@@ -3,11 +3,14 @@ import type { DayEntry } from "../../../../scripts/lib/types";
 import { phaseName } from "../../lib/content";
 import { statusGlyph, statusTextClass } from "../../lib/status";
 import { StatusPill } from "../ui/Primitives";
+import { langHref, useLanguage } from "../../lib/language";
 
 export function DayCard({ day }: { day: DayEntry }) {
+  const { language } = useLanguage();
+
   return (
     <Link
-      to={`/learn/day/${day.day}`}
+      to={langHref(language, `learn/day/${day.day}`)}
       className="group flex items-start gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 transition-colors hover:border-[var(--accent)]/40"
     >
       <span

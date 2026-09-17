@@ -10,5 +10,5 @@
     "types": ["vite/client"],
     "rootDir": "."
   },
-  "include": ["web/src", "web/src/data/generated/*.json", "scripts/lib/types.ts"]
+  "include": ["web/src", "web/src/data/generated/*.json", "scripts/lib/types.ts", "scripts/lib/language.ts"]
 }

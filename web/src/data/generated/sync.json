@@ -1,0 +1,224 @@
+{
+  "languages": [
+    "en",
+    "zh"
+  ],
+  "defaultLanguage": "en",
+  "storageKey": "agent-lab-language",
+  "counts": {
+    "synced": 14,
+    "outdated": 0,
+    "missing": 1,
+    "total": 15
+  },
+  "documents": [
+    {
+      "id": "day-01",
+      "kind": "day",
+      "language": "en",
+      "revision": 1,
+      "path": "docs/en/daily/day-01.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/daily/day-01.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "day-02",
+      "kind": "day",
+      "language": "en",
+      "revision": 1,
+      "path": "docs/en/daily/day-02.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/daily/day-02.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "day-03",
+      "kind": "day",
+      "language": "en",
+      "revision": 1,
+      "path": "docs/en/daily/day-03.md",
+      "translation": {
+        "zh": {
+          "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "agent-loop",
+      "kind": "concept",
+      "language": "en",
+      "revision": 1,
+      "path": "docs/en/concepts/agent-loop.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/concepts/agent-loop.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "agent-runtime",
+      "kind": "concept",
+      "language": "en",
+      "revision": 1,
+      "path": "docs/en/concepts/agent-runtime.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/concepts/agent-runtime.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "agent",
+      "kind": "concept",
+      "language": "en",
+      "revision": 1,
+      "path": "docs/en/concepts/agent.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/concepts/agent.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "llm-api",
+      "kind": "concept",
+      "language": "en",
+      "revision": 1,
+      "path": "docs/en/concepts/llm-api.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/concepts/llm-api.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "tool-calling",
+      "kind": "concept",
+      "language": "en",
+      "revision": 1,
+      "path": "docs/en/concepts/tool-calling.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/concepts/tool-calling.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "001-basic-llm",
+      "kind": "experiment",
+      "language": "en",
+      "revision": 1,
+      "path": "experiments/001-basic-llm/README.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/experiments/001-basic-llm.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "002-tool-calling",
+      "kind": "experiment",
+      "language": "en",
+      "revision": 1,
+      "path": "experiments/002-tool-calling/README.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/experiments/002-tool-calling.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "003-agent-loop",
+      "kind": "experiment",
+      "language": "en",
+      "revision": 1,
+      "path": "experiments/003-agent-loop/README.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/experiments/003-agent-loop.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "004-failure-modes",
+      "kind": "experiment",
+      "language": "en",
+      "revision": 1,
+      "path": "experiments/004-failure-modes/README.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/experiments/004-failure-modes.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "005-context-trim",
+      "kind": "experiment",
+      "language": "en",
+      "revision": 1,
+      "path": "experiments/005-context-trim/README.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/experiments/005-context-trim.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "custom-agent-vs-langgraph",
+      "kind": "comparison",
+      "language": "en",
+      "revision": 1,
+      "path": "docs/en/comparisons/custom-agent-vs-langgraph.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/comparisons/custom-agent-vs-langgraph.md",
+          "sourceRevision": 1
+        }
+      }
+    },
+    {
+      "id": "learning-system",
+      "kind": "comparison",
+      "language": "en",
+      "revision": 1,
+      "path": "docs/en/architecture/learning-system.md",
+      "translation": {
+        "zh": {
+          "status": "synced",
+          "path": "docs/zh/architecture/learning-system.md",
+          "sourceRevision": 1
+        }
+      }
+    }
+  ]
+}
