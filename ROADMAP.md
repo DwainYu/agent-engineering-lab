@@ -11,7 +11,9 @@ Rules:
 
 ## Phase 1 — Agent Fundamentals
 
-- [x] Agent Architecture — `docs/daily/day-01.md`
+- [x] Agent Architecture
+  - English: `docs/en/daily/day-01.md`
+  - 中文: `docs/zh/daily/day-01.md`
 - [ ] LLM API
 - [ ] Tool Calling
 - [ ] Agent Loop
